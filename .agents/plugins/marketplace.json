@@ -1,0 +1,20 @@
+{
+  "name": "zero-to-one-product",
+  "interface": {
+    "displayName": "Zero-to-One Product"
+  },
+  "plugins": [
+    {
+      "name": "zero-to-one-product",
+      "source": {
+        "source": "local",
+        "path": "./plugins/zero-to-one-product"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

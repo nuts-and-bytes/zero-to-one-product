@@ -1,0 +1,6 @@
+interface:
+  display_name: "Zero-to-One Product"
+  short_description: "Route a product idea to its first usable release"
+  default_prompt: "Use $zero-to-one-product to take my product idea toward its first usable release."
+policy:
+  allow_implicit_invocation: true
