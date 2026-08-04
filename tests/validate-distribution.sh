@@ -112,6 +112,8 @@ PY
   local missing_reverse_root="${fixture_root}/missing-reverse"
   local malformed_root="${fixture_root}/malformed"
   local unexpected_root="${fixture_root}/unexpected"
+  local invalid_webp_root="${fixture_root}/invalid-webp"
+  local trailing_webp_root="${fixture_root}/trailing-webp"
   local hostile_home="${fixture_root}/hostile-home"
   local hostile_hooks="${fixture_root}/hostile-hooks"
 
@@ -162,7 +164,9 @@ PY
     "${forged_git_directory_root}" \
     "${forged_root}" \
     "${malformed_root}" \
-    "${unexpected_root}"; do
+    "${unexpected_root}" \
+    "${invalid_webp_root}" \
+    "${trailing_webp_root}"; do
     if ! mkdir -p "${copied_root}"; then
       abort_worktree_self_test_setup "unable to create distribution fixture directory"
       return 1
@@ -314,6 +318,83 @@ PY
     fail "unexpected distribution file was accepted"
   else
     pass "unexpected distribution file remains rejected"
+  fi
+
+  printf 'not a WebP image\n' > "${invalid_webp_root}/docs/assets/hero-route.webp"
+  local invalid_webp_hash
+  if ! invalid_webp_hash="$(shasum -a 256 "${invalid_webp_root}/docs/assets/hero-route.webp" | awk '{print $1}')"; then
+    abort_worktree_self_test_setup "unable to hash invalid WebP fixture"
+    return 1
+  fi
+  if ! python3 - "${invalid_webp_root}/checksums.sha256" "${invalid_webp_hash}" <<'PY'
+import pathlib
+import sys
+
+manifest = pathlib.Path(sys.argv[1])
+digest = sys.argv[2]
+target = "docs/assets/hero-route.webp"
+lines = [
+    line
+    for line in manifest.read_text(encoding="utf-8").splitlines()
+    if not line.endswith(f"  {target}")
+]
+lines.append(f"{digest}  {target}")
+lines.sort(key=lambda line: line.split("  ", 1)[1])
+manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
+  then
+    abort_worktree_self_test_setup "unable to update invalid WebP fixture checksum"
+    return 1
+  fi
+  local invalid_webp_output
+  if invalid_webp_output="$(bash "${invalid_webp_root}/tests/validate-distribution.sh" 2>&1)"; then
+    fail "invalid WebP fixture was accepted"
+  elif grep -Fq "invalid WebP signature: docs/assets/hero-route.webp" <<< "${invalid_webp_output}" \
+    && grep -Fq "[PASS] checksums.sha256 exactly covers and matches all other regular files" \
+      <<< "${invalid_webp_output}"; then
+    pass "invalid WebP is rejected after its checksum is updated"
+  else
+    fail "invalid WebP fixture was rejected without the WebP signature gate"
+  fi
+
+  if ! python3 - "${trailing_webp_root}" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+webp = root / "docs/assets/hero-route.webp"
+data = bytearray(webp.read_bytes())
+data.extend(b"JUNK\x00\x00\x00\x00")
+data[4:8] = (len(data) - 8).to_bytes(4, "little")
+webp.write_bytes(data)
+
+entries = []
+for entry in root.rglob("*"):
+    if not entry.is_file() or entry == root / "checksums.sha256":
+        continue
+    relative = entry.relative_to(root).as_posix()
+    entries.append((relative, hashlib.sha256(entry.read_bytes()).hexdigest()))
+entries.sort()
+(root / "checksums.sha256").write_text(
+    "".join(f"{digest}  {relative}\n" for relative, digest in entries),
+    encoding="utf-8",
+)
+PY
+  then
+    abort_worktree_self_test_setup "unable to create trailing WebP fixture"
+    return 1
+  fi
+  local trailing_webp_output
+  if trailing_webp_output="$(bash "${trailing_webp_root}/tests/validate-distribution.sh" 2>&1)"; then
+    fail "trailing WebP fixture was accepted"
+  elif grep -Fq "unexpected trailing WebP data: docs/assets/hero-route.webp" \
+    <<< "${trailing_webp_output}" \
+    && grep -Fq "[PASS] checksums.sha256 exactly covers and matches all other regular files" \
+      <<< "${trailing_webp_output}"; then
+    pass "trailing WebP data is rejected after its checksum is updated"
+  else
+    fail "trailing WebP fixture was rejected without the chunk-end gate"
   fi
 
   if (( failures > 0 )); then
@@ -572,6 +653,13 @@ required_files=(
   "plugins/zero-to-one-product/skills/zero-to-one-product/references/matt-bridges.md"
   "plugins/zero-to-one-product/skills/zero-to-one-product/references/bounded-execution.md"
   "plugins/zero-to-one-product/skills/zero-to-one-product/templates/state.md"
+  "docs/index.html"
+  "docs/styles.css"
+  "docs/app.js"
+  "docs/assets/hero-route.webp"
+  "requirements-dev.txt"
+  "tests/site_test_support.py"
+  "tests/test_site_ticket_3.py"
   "README.md"
   "README.zh-CN.md"
   "LICENSE"
@@ -605,6 +693,13 @@ allowed_files = {
     "plugins/zero-to-one-product/skills/zero-to-one-product/references/matt-bridges.md",
     "plugins/zero-to-one-product/skills/zero-to-one-product/references/bounded-execution.md",
     "plugins/zero-to-one-product/skills/zero-to-one-product/templates/state.md",
+    "docs/index.html",
+    "docs/styles.css",
+    "docs/app.js",
+    "docs/assets/hero-route.webp",
+    "requirements-dev.txt",
+    "tests/site_test_support.py",
+    "tests/test_site_ticket_3.py",
     "tests/validate-distribution.sh",
     "README.md",
     "README.zh-CN.md",
@@ -613,6 +708,7 @@ allowed_files = {
     "checksums.sha256",
 }
 executable_file = "tests/validate-distribution.sh"
+approved_webp_file = "docs/assets/hero-route.webp"
 private_key = re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----")
 token_patterns = (
     ("GitHub fine-grained token", re.compile(r"github_pat_[A-Za-z0-9_]{20,}")),
@@ -703,6 +799,47 @@ for current, directory_names, file_names in os.walk(root, topdown=True, followli
             data = entry.read_bytes()
         except OSError as error:
             issues.append(f"unable to read file: {relative}: {error}")
+            continue
+        if relative == approved_webp_file:
+            if len(data) > 450000:
+                issues.append(f"WebP exceeds 450000-byte limit: {relative}")
+                continue
+            if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"WEBP":
+                issues.append(f"invalid WebP signature: {relative}")
+                continue
+            declared_length = int.from_bytes(data[4:8], "little") + 8
+            if declared_length != len(data):
+                issues.append(
+                    f"invalid WebP RIFF length: {relative}: "
+                    f"declared {declared_length}, actual {len(data)}"
+                )
+                continue
+            if len(data) < 20 or data[12:16] != b"VP8 ":
+                issues.append(f"WebP first chunk must be static lossy VP8: {relative}")
+                continue
+            chunk_length = int.from_bytes(data[16:20], "little")
+            chunk_data_end = 20 + chunk_length
+            padded_end = chunk_data_end + (chunk_length & 1)
+            if chunk_length < 10 or chunk_data_end > len(data):
+                issues.append(f"invalid WebP VP8 chunk length: {relative}")
+                continue
+            if padded_end != len(data):
+                issues.append(f"unexpected trailing WebP data: {relative}")
+                continue
+            if chunk_length & 1 and data[chunk_data_end] != 0:
+                issues.append(f"invalid WebP VP8 padding byte: {relative}")
+                continue
+            if data[23:26] != b"\x9d\x01\x2a":
+                issues.append(f"invalid WebP VP8 start code: {relative}")
+                continue
+            width = int.from_bytes(data[26:28], "little") & 0x3FFF
+            height = int.from_bytes(data[28:30], "little") & 0x3FFF
+            if (width, height) != (1440, 811):
+                issues.append(
+                    f"invalid WebP dimensions: {relative}: "
+                    f"expected 1440x811, found {width}x{height}"
+                )
+                continue
             continue
         if b"\x00" in data:
             issues.append(f"NUL byte forbidden: {relative}")
