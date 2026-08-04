@@ -79,10 +79,12 @@ class SiteBrowserTestCase(unittest.TestCase):
         width=1280,
         height=720,
         reduced_motion="no-preference",
+        java_script_enabled=True,
     ):
         self.browser_context = self.browser.new_context(
             viewport={"width": width, "height": height},
             reduced_motion=reduced_motion,
+            java_script_enabled=java_script_enabled,
         )
         page = self.browser_context.new_page()
         response = page.goto(f"{self.base_url}{path}", wait_until="networkidle")

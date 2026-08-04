@@ -4,7 +4,7 @@
   --ink: #20201e;
   --muted: #67635b;
   --cobalt: #1559c7;
-  --vermilion: #c8492f;
+  --vermilion: #a83b25;
   --paper-line: rgba(78, 67, 51, 0.14);
   --paper-shadow: rgba(85, 68, 41, 0.16);
   --display: "Iowan Old Style", "Noto Serif SC", "Songti SC", STSong, serif;
@@ -675,7 +675,7 @@ code {
     height: 2.4rem;
   }
 
-  .menu-toggle {
+  .menu-enhanced .menu-toggle {
     display: block;
     flex: 0 0 auto;
   }
@@ -685,7 +685,7 @@ code {
     top: calc(100% + 0.55rem);
     right: 0;
     left: 0;
-    display: none;
+    display: flex;
     flex-direction: column;
     gap: 0;
     align-items: stretch;
@@ -697,7 +697,11 @@ code {
     backdrop-filter: blur(18px);
   }
 
-  .site-header.is-open .primary-navigation {
+  .menu-enhanced .primary-navigation {
+    display: none;
+  }
+
+  .menu-enhanced .site-header.is-open .primary-navigation {
     display: flex;
   }
 
@@ -709,7 +713,7 @@ code {
     transform: translateY(-0.225rem) rotate(-45deg);
   }
 
-  .primary-navigation a {
+  .menu-enhanced .primary-navigation a {
     padding: 0.8rem 0.9rem;
     opacity: 0;
     transform: translateY(0.75rem);
@@ -861,7 +865,8 @@ code {
 
   .js [data-reveal],
   .js [data-reveal].is-visible {
-    opacity: 1;
-    transform: none;
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
   }
 }

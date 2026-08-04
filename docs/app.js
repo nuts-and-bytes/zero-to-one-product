@@ -34,6 +34,21 @@
         menuButton.focus();
       }
     });
+
+    var desktopViewport = window.matchMedia("(min-width: 768px)");
+    var closeMenuForDesktop = function (event) {
+      if (event.matches) {
+        setMenuOpen(false);
+      }
+    };
+
+    if (typeof desktopViewport.addEventListener === "function") {
+      desktopViewport.addEventListener("change", closeMenuForDesktop);
+    } else {
+      desktopViewport.addListener(closeMenuForDesktop);
+    }
+
+    document.documentElement.classList.add("menu-enhanced");
   }
 
   var skipLink = document.querySelector(".skip-link");

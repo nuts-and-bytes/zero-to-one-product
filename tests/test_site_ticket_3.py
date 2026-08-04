@@ -49,6 +49,40 @@ class SiteFoundationAcceptanceTest(SiteBrowserTestCase):
         self.assertTrue(navigation.is_visible())
         self.assertEqual(menu_button.get_attribute("aria-expanded"), "true")
 
+    def test_mobile_navigation_remains_available_without_javascript(self):
+        page = self.open_page(
+            width=390,
+            height=844,
+            java_script_enabled=False,
+        )
+
+        scroll_width, client_width = page.evaluate(
+            "[document.documentElement.scrollWidth, "
+            "document.documentElement.clientWidth]"
+        )
+        self.assertLessEqual(scroll_width, client_width)
+
+        navigation = page.get_by_role("navigation", name="主要导航")
+        menu_button = page.locator("[data-menu-toggle]")
+        self.assertTrue(navigation.is_visible())
+        self.assertFalse(menu_button.is_visible())
+
+    def test_mobile_navigation_resets_when_viewport_becomes_desktop(self):
+        page = self.open_page(width=390, height=844)
+
+        menu_button = page.locator("[data-menu-toggle]")
+        menu_button.click()
+        self.assertEqual(menu_button.get_attribute("aria-expanded"), "true")
+
+        page.set_viewport_size({"width": 1024, "height": 800})
+        self.assertEqual(menu_button.get_attribute("aria-expanded"), "false")
+        self.assertEqual(menu_button.get_attribute("aria-label"), "打开导航")
+
+        page.set_viewport_size({"width": 390, "height": 844})
+        self.assertFalse(
+            page.get_by_role("navigation", name="主要导航").is_visible()
+        )
+
     def test_reduced_motion_preserves_skip_link_and_removes_reveal_animation(self):
         page = self.open_page(reduced_motion="reduce")
 
@@ -61,13 +95,85 @@ class SiteFoundationAcceptanceTest(SiteBrowserTestCase):
         page.keyboard.press("Enter")
         self.assertEqual(page.evaluate("document.activeElement.id"), "main-content")
 
-        animation_durations = page.locator("[data-reveal]").evaluate_all(
-            "elements => elements.map(element => "
-            "getComputedStyle(element).animationDuration)"
+        reveal_styles = page.locator("[data-reveal]").evaluate_all(
+            "elements => elements.map(element => ({"
+            "transitionDuration: getComputedStyle(element).transitionDuration, "
+            "opacity: getComputedStyle(element).opacity, "
+            "transform: getComputedStyle(element).transform"
+            "}))"
         )
-        self.assertGreater(len(animation_durations), 0)
-        for animation_duration in animation_durations:
-            self.assertIn(animation_duration, {"0s", "0.001s"})
+        self.assertGreater(len(reveal_styles), 0)
+        for reveal_style in reveal_styles:
+            self.assertIn(
+                reveal_style["transitionDuration"],
+                {"0s", "0.001s"},
+            )
+            self.assertEqual(reveal_style["opacity"], "1")
+            self.assertEqual(reveal_style["transform"], "none")
+
+    def test_number_labels_meet_wcag_text_contrast(self):
+        page = self.open_page()
+
+        contrast_samples = page.locator(
+            ".principle-index, .route-number"
+        ).evaluate_all(
+            """
+            elements => {
+              const channels = color =>
+                color.match(/[\\d.]+/g).slice(0, 3).map(Number);
+              const luminance = color => {
+                const values = channels(color).map(value => {
+                  const normalized = value / 255;
+                  return normalized <= 0.03928
+                    ? normalized / 12.92
+                    : ((normalized + 0.055) / 1.055) ** 2.4;
+                });
+                return 0.2126 * values[0]
+                  + 0.7152 * values[1]
+                  + 0.0722 * values[2];
+              };
+              const opaqueBackground = element => {
+                let current = element;
+                while (current) {
+                  const color = getComputedStyle(current).backgroundColor;
+                  const values = color.match(/[\\d.]+/g);
+                  if (values && (values.length < 4 || Number(values[3]) > 0)) {
+                    return color;
+                  }
+                  current = current.parentElement;
+                }
+                return "rgb(255, 255, 255)";
+              };
+              return elements.map(element => {
+                const foreground = getComputedStyle(element).color;
+                const background = opaqueBackground(element);
+                const foregroundLuminance = luminance(foreground);
+                const backgroundLuminance = luminance(background);
+                const ratio = (Math.max(
+                  foregroundLuminance,
+                  backgroundLuminance
+                ) + 0.05) / (Math.min(
+                  foregroundLuminance,
+                  backgroundLuminance
+                ) + 0.05);
+                return {
+                  label: element.className,
+                  foreground,
+                  background,
+                  ratio,
+                };
+              });
+            }
+            """
+        )
+
+        self.assertEqual(len(contrast_samples), 4)
+        for sample in contrast_samples:
+            self.assertGreaterEqual(
+                sample["ratio"],
+                4.5,
+                f"{sample['label']} contrast: {sample}",
+            )
 
     def test_page_does_not_expose_variant_controls(self):
         page = self.open_page()
