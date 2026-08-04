@@ -1,5 +1,7 @@
 # Zero-to-One Product
 
+English | [简体中文](README.zh-CN.md)
+
 `zero-to-one-product` is a skills-only Codex router that combines selected workflows from [Matt Pocock's skills](https://github.com/mattpocock/skills) and [Superpowers](https://github.com/obra/superpowers) into a fixed path from product idea to first usable version.
 
 The plugin does not bundle either upstream project. Install and update those dependencies separately before installing this marketplace.
