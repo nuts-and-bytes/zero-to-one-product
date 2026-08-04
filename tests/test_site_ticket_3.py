@@ -35,24 +35,35 @@ class SiteFoundationAcceptanceTest(SiteBrowserTestCase):
         )
         self.assertLessEqual(scroll_width, client_width)
 
-        page.get_by_role("button", name="打开导航").click()
-        self.assertTrue(
-            page.get_by_role("navigation", name="主要导航").is_visible()
-        )
+        navigation = page.get_by_role("navigation", name="主要导航")
+        menu_button = page.get_by_role("button", name="打开导航")
+        self.assertFalse(navigation.is_visible())
+        self.assertEqual(menu_button.get_attribute("aria-expanded"), "false")
+
+        menu_button.click()
+
+        self.assertTrue(navigation.is_visible())
+        self.assertEqual(menu_button.get_attribute("aria-expanded"), "true")
 
     def test_reduced_motion_preserves_skip_link_and_removes_reveal_animation(self):
         page = self.open_page(reduced_motion="reduce")
 
+        self.assertEqual(page.locator("#main-content").count(), 1)
         page.keyboard.press("Tab")
         self.assertEqual(
             page.evaluate("document.activeElement.getAttribute('href')"),
             "#main-content",
         )
+        page.keyboard.press("Enter")
+        self.assertEqual(page.evaluate("document.activeElement.id"), "main-content")
 
-        animation_duration = page.locator("[data-reveal]").first.evaluate(
-            "element => getComputedStyle(element).animationDuration"
+        animation_durations = page.locator("[data-reveal]").evaluate_all(
+            "elements => elements.map(element => "
+            "getComputedStyle(element).animationDuration)"
         )
-        self.assertIn(animation_duration, {"0s", "0.001s"})
+        self.assertGreater(len(animation_durations), 0)
+        for animation_duration in animation_durations:
+            self.assertIn(animation_duration, {"0s", "0.001s"})
 
     def test_page_does_not_expose_variant_controls(self):
         page = self.open_page()

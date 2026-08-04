@@ -1,3 +1,4 @@
+from contextlib import ExitStack
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -16,39 +17,55 @@ class SiteBrowserTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        repository_root = Path(__file__).resolve().parents[1]
-        handler = partial(
-            _QuietStaticHandler,
-            directory=str(repository_root / "docs"),
-        )
-        cls.http_server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-        cls.server_thread = Thread(
-            target=cls.http_server.serve_forever,
-            daemon=True,
-        )
-        cls.server_thread.start()
-        host, port = cls.http_server.server_address
-        cls.base_url = f"http://{host}:{port}"
-
-        cls.playwright = sync_playwright().start()
+        cls.class_stack = ExitStack()
         try:
-            cls.browser = cls.playwright.chromium.launch(headless=True)
-        except PlaywrightError as error:
-            if "Executable doesn't exist" not in str(error):
-                raise
-            cls.browser = cls.playwright.chromium.launch(
-                channel="chrome",
-                headless=True,
+            repository_root = Path(__file__).resolve().parents[1]
+            handler = partial(
+                _QuietStaticHandler,
+                directory=str(repository_root / "docs"),
             )
+            cls.http_server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            cls.class_stack.callback(cls.http_server.server_close)
+
+            cls.server_thread = Thread(
+                target=cls.http_server.serve_forever,
+                daemon=True,
+            )
+            cls.server_thread.start()
+            cls.class_stack.callback(cls.server_thread.join)
+            cls.class_stack.callback(cls.http_server.shutdown)
+            host, port = cls.http_server.server_address
+            cls.base_url = f"http://{host}:{port}"
+
+            cls.playwright = sync_playwright().start()
+            cls.class_stack.callback(cls.playwright.stop)
+            try:
+                cls.browser = cls.playwright.chromium.launch(headless=True)
+            except PlaywrightError as bundled_error:
+                if "Executable doesn't exist" not in str(bundled_error):
+                    raise
+                try:
+                    cls.browser = cls.playwright.chromium.launch(
+                        channel="chrome",
+                        headless=True,
+                    )
+                except PlaywrightError as fallback_error:
+                    raise RuntimeError(
+                        "Bundled Chromium is not installed and the local "
+                        "Chrome fallback could not start. Run "
+                        "`python3 -m playwright install chromium`."
+                    ) from fallback_error
+            cls.class_stack.callback(cls.browser.close)
+        except BaseException:
+            cls.class_stack.close()
+            raise
 
     @classmethod
     def tearDownClass(cls):
-        cls.browser.close()
-        cls.playwright.stop()
-        cls.http_server.shutdown()
-        cls.http_server.server_close()
-        cls.server_thread.join()
-        super().tearDownClass()
+        try:
+            cls.class_stack.close()
+        finally:
+            super().tearDownClass()
 
     def tearDown(self):
         if hasattr(self, "browser_context"):
