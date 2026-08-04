@@ -193,6 +193,34 @@ class SiteFoundationAcceptanceTest(SiteBrowserTestCase):
                 f"{sample['label']} contrast: {sample}",
             )
 
+    def test_hero_image_preserves_intrinsic_ratio_at_responsive_sizes(self):
+        expected_ratio = 811 / 1440
+
+        for width, height in ((1280, 720), (390, 844)):
+            with self.subTest(viewport=(width, height)):
+                page = self.open_page(width=width, height=height)
+                image = page.locator(".visual-core img")
+                box = image.bounding_box()
+                intrinsic_size = image.evaluate(
+                    "element => ({"
+                    "width: element.naturalWidth, "
+                    "height: element.naturalHeight"
+                    "})"
+                )
+
+                self.assertEqual(intrinsic_size, {"width": 1440, "height": 811})
+                self.assertIsNotNone(box)
+                actual_ratio = box["height"] / box["width"]
+                self.assertAlmostEqual(
+                    actual_ratio,
+                    expected_ratio,
+                    delta=0.02,
+                    msg=f"viewport {(width, height)} rendered hero box {box}",
+                )
+
+                self.browser_context.close()
+                del self.browser_context
+
     def test_page_does_not_expose_variant_controls(self):
         page = self.open_page()
 

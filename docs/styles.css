@@ -363,6 +363,7 @@ h1 {
 
 .visual-core img {
   aspect-ratio: 1440 / 811;
+  height: auto;
   object-fit: cover;
 }
 
