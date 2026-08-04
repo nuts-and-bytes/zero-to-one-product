@@ -67,6 +67,18 @@ class SiteFoundationAcceptanceTest(SiteBrowserTestCase):
         self.assertTrue(navigation.is_visible())
         self.assertFalse(menu_button.is_visible())
 
+        navigation_box = navigation.bounding_box()
+        hero_box = page.locator(".hero-copy").bounding_box()
+        self.assertIsNotNone(navigation_box)
+        self.assertIsNotNone(hero_box)
+        navigation_bottom = navigation_box["y"] + navigation_box["height"]
+        self.assertLessEqual(
+            navigation_bottom,
+            hero_box["y"] + 1,
+            f"navigation bottom {navigation_bottom}px overlaps "
+            f"hero top {hero_box['y']}px",
+        )
+
     def test_mobile_navigation_resets_when_viewport_becomes_desktop(self):
         page = self.open_page(width=390, height=844)
 
