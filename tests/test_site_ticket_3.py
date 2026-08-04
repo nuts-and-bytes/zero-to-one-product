@@ -36,7 +36,11 @@ class SiteFoundationAcceptanceTest(SiteBrowserTestCase):
         self.assertLessEqual(scroll_width, client_width)
 
         navigation = page.get_by_role("navigation", name="主要导航")
-        menu_button = page.get_by_role("button", name="打开导航")
+        self.assertEqual(
+            page.get_by_role("button", name="打开导航").count(),
+            1,
+        )
+        menu_button = page.locator("[data-menu-toggle]")
         self.assertFalse(navigation.is_visible())
         self.assertEqual(menu_button.get_attribute("aria-expanded"), "false")
 
