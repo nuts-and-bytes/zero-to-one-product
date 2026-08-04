@@ -1,3 +1,5 @@
+from playwright.sync_api import expect
+
 from tests.site_test_support import SiteBrowserTestCase
 
 
@@ -60,13 +62,20 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
         self.assertEqual(ownership.count(), 1, "Missing #ownership section")
         ownership_text = ownership.inner_text()
         expected_responsibilities = {
-            "Matt": ("产品形成", "整票审查"),
-            "Router": ("分类", "证据恢复", "Git gate", "有界执行"),
+            "Matt": ("产品形成", "困难调试", "整票审查"),
+            "Router": (
+                "分类",
+                "证据恢复",
+                "Git gate",
+                "有界执行",
+                "阶段交还",
+            ),
             "Superpowers": (
                 "隔离",
-                "单票计划",
+                "单票技术计划",
                 "TDD",
                 "常规调试",
+                "任务审查",
                 "完成证据",
                 "分支收尾",
             ),
@@ -85,36 +94,69 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
         guardrails_text = guardrails.inner_text()
         compact_guardrails_text = "".join(guardrails_text.split())
 
-        expected_rules = (
+        expected_process_rules = (
             "同阶段一个主流程",
             "产品发现不叠加 brainstorming",
             "正式编码只使用 Superpowers test-driven-development",
-            "不使用 Matt tdd / implement",
-            "常规调试使用 systematic-debugging",
-            "仅有明确升级证据才使用 diagnosing-bugs",
+            "writing-plans 只在规格和 Tickets 完成后运行，且仅服务一个 Ticket",
+            "to-tickets 负责切票，writing-plans 负责单票技术计划",
+            "禁止使用 Matt tdd / implement",
+            "禁止完整运行 subagent-driven-development / executing-plans",
+            "普通调试与困难调试不得并行",
+            "逐任务审查与整票审查不得并行",
+            "bounded entry = 一个已选 Ticket + 批准计划 + 按序执行",
+            "每个任务使用 distinct fresh implementer",
+            "完成所有任务后交还 Router",
+            "不得从 bounded 直接进入 verification / branch finish",
         )
-        for rule in expected_rules:
+        for rule in expected_process_rules:
             with self.subTest(rule=rule):
                 self.assertIn("".join(rule.split()), compact_guardrails_text)
 
-        review_order = (
-            "新实现者→RED–GREEN–REFACTOR→规格审查→质量审查→整票code-review"
+        expected_debugging_rules = (
+            "常规调试使用 systematic-debugging",
+            "间歇性",
+            "性能相关",
+            "难复现",
+            "常规 systematic-debugging 无法解决",
+            "只有这些明确升级证据才使用 diagnosing-bugs",
+            "普通调试与困难调试两个 loop 不同时运行",
         )
-        self.assertIn(review_order, compact_guardrails_text)
+        for rule in expected_debugging_rules:
+            with self.subTest(rule=rule):
+                self.assertIn("".join(rule.split()), compact_guardrails_text)
 
+        expected_review_rules = (
+            "每个任务按新实现者→RED–GREEN–REFACTOR→规格审查→质量审查执行",
+            "规格审查发现问题则修复并重复至 PASS，再进入质量审查",
+            "质量审查发现问题则修复并重复至 PASS",
+            "完成所有任务后进行整票 code-review",
+        )
+        for rule in expected_review_rules:
+            with self.subTest(rule=rule):
+                self.assertIn("".join(rule.split()), compact_guardrails_text)
+
+        self.assertIn(
+            "".join("自动路由只免除路由确认，不扩大权限".split()),
+            compact_guardrails_text,
+        )
         for gated_action in (
+            "工作区/目录创建",
+            "Git 初始化",
             "外部写入",
             "Issue Tracker",
             "worktree",
             "凭证",
             "破坏性操作",
-            "提交",
-            "推送",
-            "部署",
+            "commit",
+            "push",
+            "PR",
+            "deploy/release",
+            "外部通信",
         ):
             with self.subTest(gated_action=gated_action):
                 self.assertIn("".join(gated_action.split()), compact_guardrails_text)
-        self.assertIn("授权门", guardrails_text)
+        self.assertIn("均保留独立授权门", compact_guardrails_text)
 
     def test_workflow_visuals_use_stable_intrinsic_image_contracts(self):
         page = self.open_page()
@@ -151,22 +193,39 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
 
         owners = page.locator("#workflow [data-stage] .stage-owner")
         self.assertEqual(owners.count(), 13)
-        owner_states = owners.evaluate_all(
-            """
-            elements => elements.map(element => ({
-              visible: Boolean(
-                element.offsetWidth
-                || element.offsetHeight
-                || element.getClientRects().length
-              ),
-              text: element.textContent.trim(),
-            }))
-            """
-        )
-        for index, owner_state in enumerate(owner_states, start=1):
-            with self.subTest(stage=index):
-                self.assertTrue(owner_state["visible"])
+        for index in range(owners.count()):
+            with self.subTest(stage=index + 1):
+                owner = owners.nth(index)
+                owner.scroll_into_view_if_needed()
+                expect(owner).to_be_visible()
+                owner_state = owner.evaluate(
+                    """
+                    element => {
+                      const style = getComputedStyle(element);
+                      const rect = element.getBoundingClientRect();
+                      const centerX = rect.left + rect.width / 2;
+                      const centerY = rect.top + rect.height / 2;
+                      const hit = document.elementFromPoint(centerX, centerY);
+                      return {
+                        text: element.textContent.trim(),
+                        visibility: style.visibility,
+                        opacity: Number.parseFloat(style.opacity),
+                        centerInViewport:
+                          centerX >= 0
+                          && centerX <= window.innerWidth
+                          && centerY >= 0
+                          && centerY <= window.innerHeight,
+                        centerHitsOwner:
+                          hit === element || (hit !== null && element.contains(hit)),
+                      };
+                    }
+                    """
+                )
                 self.assertTrue(owner_state["text"])
+                self.assertEqual(owner_state["visibility"], "visible")
+                self.assertGreater(owner_state["opacity"], 0)
+                self.assertTrue(owner_state["centerInViewport"])
+                self.assertTrue(owner_state["centerHitsOwner"])
 
         for section_id in ("workflow", "ownership", "guardrails"):
             with self.subTest(section=section_id):
