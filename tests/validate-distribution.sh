@@ -573,6 +573,7 @@ required_files=(
   "plugins/zero-to-one-product/skills/zero-to-one-product/references/bounded-execution.md"
   "plugins/zero-to-one-product/skills/zero-to-one-product/templates/state.md"
   "README.md"
+  "README.zh-CN.md"
   "LICENSE"
   "THIRD_PARTY_NOTICES.md"
   "checksums.sha256"
@@ -606,6 +607,7 @@ allowed_files = {
     "plugins/zero-to-one-product/skills/zero-to-one-product/templates/state.md",
     "tests/validate-distribution.sh",
     "README.md",
+    "README.zh-CN.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "checksums.sha256",
