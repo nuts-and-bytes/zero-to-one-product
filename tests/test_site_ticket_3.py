@@ -1,3 +1,5 @@
+from playwright.sync_api import expect
+
 from tests.site_test_support import SiteBrowserTestCase
 
 
@@ -87,7 +89,11 @@ class SiteFoundationAcceptanceTest(SiteBrowserTestCase):
         self.assertEqual(menu_button.get_attribute("aria-expanded"), "true")
 
         page.set_viewport_size({"width": 1024, "height": 800})
-        self.assertEqual(menu_button.get_attribute("aria-expanded"), "false")
+        expect(menu_button).to_have_attribute(
+            "aria-expanded",
+            "false",
+            timeout=2_000,
+        )
         self.assertEqual(menu_button.get_attribute("aria-label"), "打开导航")
 
         page.set_viewport_size({"width": 390, "height": 844})
