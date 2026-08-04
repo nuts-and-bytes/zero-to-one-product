@@ -108,8 +108,11 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
             self.assertRegex(single_owner, pattern)
 
         planning_boundary = item_text("planning-boundary")
+        self.assertIn(
+            "规格和 Tickets 完成后，才能运行 writing-plans",
+            planning_boundary,
+        )
         for pattern in (
-            r"规格.*Tickets.*完成.*writing-plans",
             r"writing-plans.*只.*一个.*Ticket",
             r"to-tickets.*纵向.*Tickets.*writing-plans.*单个",
         ):
@@ -128,14 +131,23 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
             self.assertRegex(bounded_execution, pattern)
 
         debugging = item_text("debugging")
+        self.assertIn(
+            "只有在出现间歇性、性能相关、难复现或无法解决等明确升级证据时，"
+            "才升级到 diagnosing-bugs",
+            debugging,
+        )
         for pattern in (
             r"systematic-debugging.*常规",
-            r"间歇性.*性能.*难复现.*无法解决.*diagnosing-bugs",
             r"两个.*调试.*不得.*同时",
         ):
             self.assertRegex(debugging, pattern)
 
         authorization = item_text("authorization")
+        self.assertIn(
+            "以下所有受控操作仍必须逐项经过独立授权门",
+            authorization,
+        )
+        self.assertNotRegex(authorization, r"(?:不受|无需).*授权")
         actions = (
             "工作区",
             "目录创建",
