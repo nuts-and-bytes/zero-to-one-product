@@ -18,6 +18,551 @@ fail() {
   failures=$((failures + 1))
 }
 
+WORKTREE_SELF_TEST_TEMP_ROOT=""
+WORKTREE_SELF_TEST_FIXTURE_ROOT=""
+
+cleanup_worktree_self_test() {
+  local temp_root="${WORKTREE_SELF_TEST_TEMP_ROOT:-}"
+  local fixture_root="${WORKTREE_SELF_TEST_FIXTURE_ROOT:-}"
+
+  if [[
+    -n "${temp_root}"
+    && -n "${fixture_root}"
+    && "${fixture_root}" != "${temp_root}"
+    && "${fixture_root%/*}" == "${temp_root}"
+    && -d "${fixture_root}"
+    && ! -L "${fixture_root}"
+  ]]; then
+    rm -rf -- "${fixture_root}"
+    return $?
+  fi
+  return 0
+}
+
+abort_worktree_self_test_setup() {
+  fail "$1"
+  if ! cleanup_worktree_self_test; then
+    fail "unable to clean up worktree self-test fixture directory"
+  fi
+  trap - EXIT
+  return 1
+}
+
+run_worktree_self_test_git() {
+  local variable_name
+  local -a unset_git_environment=()
+
+  while IFS='=' read -r variable_name _; do
+    if [[ "${variable_name}" == GIT_* ]]; then
+      unset_git_environment+=("-u" "${variable_name}")
+    fi
+  done < <(env)
+
+  env \
+    "${unset_git_environment[@]}" \
+    GIT_CONFIG_NOSYSTEM=1 \
+    GIT_CONFIG_GLOBAL=/dev/null \
+    git "$@"
+}
+
+run_worktree_self_test() {
+  local temp_root
+  if ! temp_root="$(python3 - <<'PY'
+import pathlib
+import tempfile
+
+print(pathlib.Path(tempfile.gettempdir()).resolve(strict=True))
+PY
+)"; then
+    fail "unable to resolve the system temporary directory"
+    return 1
+  fi
+  if [[ -z "${temp_root}" || "${temp_root}" != /* || ! -d "${temp_root}" || -L "${temp_root}" ]]; then
+    fail "resolved temporary directory is not a safe absolute directory"
+    return 1
+  fi
+
+  local fixture_root
+  if ! fixture_root="$(mktemp -d "${temp_root}/validator-worktree.XXXXXX")"; then
+    fail "unable to create worktree self-test fixture directory"
+    return 1
+  fi
+  if [[
+    -z "${fixture_root}"
+    || "${fixture_root}" == "${temp_root}"
+    || "${fixture_root%/*}" != "${temp_root}"
+    || ! -d "${fixture_root}"
+    || -L "${fixture_root}"
+  ]]; then
+    fail "worktree self-test fixture is not a safe child of the temporary directory"
+    return 1
+  fi
+
+  WORKTREE_SELF_TEST_TEMP_ROOT="${temp_root}"
+  WORKTREE_SELF_TEST_FIXTURE_ROOT="${fixture_root}"
+  trap cleanup_worktree_self_test EXIT
+
+  local ordinary_root="${fixture_root}/ordinary"
+  local linked_root="${fixture_root}/linked"
+  local empty_git_directory_root="${fixture_root}/empty-git-directory"
+  local forged_git_directory_root="${fixture_root}/forged-git-directory"
+  local forged_root="${fixture_root}/forged"
+  local unrelated_root="${fixture_root}/unrelated"
+  local wrong_reverse_root="${fixture_root}/wrong-reverse"
+  local missing_reverse_root="${fixture_root}/missing-reverse"
+  local malformed_root="${fixture_root}/malformed"
+  local unexpected_root="${fixture_root}/unexpected"
+  local hostile_home="${fixture_root}/hostile-home"
+  local hostile_hooks="${fixture_root}/hostile-hooks"
+
+  if ! mkdir -p "${hostile_home}" "${hostile_hooks}"; then
+    abort_worktree_self_test_setup "unable to create hostile Git configuration fixture"
+    return 1
+  fi
+  if ! printf '%s\n' \
+    '[commit]' \
+    '  gpgSign = true' \
+    '[gpg]' \
+    '  program = /definitely/missing/gpg' \
+    '[core]' \
+    "  hooksPath = ${hostile_hooks}" \
+    '  worktree = /definitely/missing/worktree' > "${hostile_home}/.gitconfig"; then
+    abort_worktree_self_test_setup "unable to write hostile global Git configuration fixture"
+    return 1
+  fi
+  if ! printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    "printf 'hostile global pre-commit hook ran\\n' >&2" \
+    'exit 1' > "${hostile_hooks}/pre-commit"; then
+    abort_worktree_self_test_setup "unable to write hostile global Git hook fixture"
+    return 1
+  fi
+  if ! chmod +x "${hostile_hooks}/pre-commit"; then
+    abort_worktree_self_test_setup "unable to make hostile global Git hook executable"
+    return 1
+  fi
+  HOME="${hostile_home}"
+  export HOME
+
+  local visible_global_git_config
+  if ! visible_global_git_config="$(run_worktree_self_test_git config --global --list)"; then
+    abort_worktree_self_test_setup "unable to probe isolated global Git configuration"
+    return 1
+  fi
+  if [[ -n "${visible_global_git_config}" ]]; then
+    abort_worktree_self_test_setup "hostile global Git configuration leaked into fixture commands"
+    return 1
+  fi
+  pass "fixture commands ignore hostile global Git configuration"
+
+  local copied_root
+  for copied_root in \
+    "${ordinary_root}" \
+    "${empty_git_directory_root}" \
+    "${forged_git_directory_root}" \
+    "${forged_root}" \
+    "${malformed_root}" \
+    "${unexpected_root}"; do
+    if ! mkdir -p "${copied_root}"; then
+      abort_worktree_self_test_setup "unable to create distribution fixture directory"
+      return 1
+    fi
+    if ! tar --exclude='.git' -C "${MARKETPLACE_ROOT}" -cf - . | tar -C "${copied_root}" -xf -; then
+      abort_worktree_self_test_setup "unable to copy distribution fixture"
+      return 1
+    fi
+  done
+
+  if ! run_worktree_self_test_git -C "${ordinary_root}" init -q; then
+    abort_worktree_self_test_setup "unable to initialize ordinary checkout fixture"
+    return 1
+  fi
+  if ! run_worktree_self_test_git -C "${ordinary_root}" add -A; then
+    abort_worktree_self_test_setup "unable to stage ordinary checkout fixture"
+    return 1
+  fi
+  if ! run_worktree_self_test_git \
+    -C "${ordinary_root}" \
+    -c user.name='Validator Test' \
+    -c user.email='validator@example.invalid' \
+    -c commit.gpgSign=false \
+    -c core.hooksPath=/dev/null \
+    commit -qm fixture; then
+    abort_worktree_self_test_setup "unable to commit ordinary checkout fixture"
+    return 1
+  fi
+  pass "hostile global Git configuration does not affect fixture commands"
+
+  if bash "${ordinary_root}/tests/validate-distribution.sh" >/dev/null; then
+    pass "ordinary checkout passes the distribution validator"
+  else
+    fail "ordinary checkout failed the distribution validator"
+  fi
+
+  if ! mkdir -p "${empty_git_directory_root}/.git"; then
+    abort_worktree_self_test_setup "unable to create empty root Git-directory fixture"
+    return 1
+  fi
+  if bash "${empty_git_directory_root}/tests/validate-distribution.sh" >/dev/null 2>&1; then
+    fail "empty root .git directory was accepted"
+  else
+    pass "empty root .git directory is rejected"
+  fi
+
+  if ! mkdir -p "${forged_git_directory_root}/.git"; then
+    abort_worktree_self_test_setup "unable to create forged root Git-directory fixture"
+    return 1
+  fi
+  if ! printf 'forged hidden metadata\n' > "${forged_git_directory_root}/.git/hidden.txt"; then
+    abort_worktree_self_test_setup "unable to create forged hidden Git metadata fixture"
+    return 1
+  fi
+  if bash "${forged_git_directory_root}/tests/validate-distribution.sh" >/dev/null 2>&1; then
+    fail "forged root .git directory with hidden content was accepted"
+  else
+    pass "forged root .git directory with hidden content is rejected"
+  fi
+
+  if ! run_worktree_self_test_git -C "${ordinary_root}" worktree add -q -b validator-linked "${linked_root}"; then
+    abort_worktree_self_test_setup "unable to create linked worktree fixture"
+    return 1
+  fi
+  if bash "${linked_root}/tests/validate-distribution.sh" >/dev/null; then
+    pass "linked worktree passes the distribution validator"
+  else
+    fail "linked worktree failed the distribution validator"
+  fi
+
+  if ! mkdir -p "${unrelated_root}"; then
+    abort_worktree_self_test_setup "unable to create unrelated Git fixture directory"
+    return 1
+  fi
+  if ! run_worktree_self_test_git -C "${unrelated_root}" init -q; then
+    abort_worktree_self_test_setup "unable to initialize unrelated Git fixture"
+    return 1
+  fi
+  if ! run_worktree_self_test_git -C "${unrelated_root}" config core.worktree "${forged_root}"; then
+    abort_worktree_self_test_setup "unable to configure forged Git worktree fixture"
+    return 1
+  fi
+  printf 'gitdir: %s\n' "${unrelated_root}/.git" > "${forged_root}/.git"
+  if bash "${forged_root}/tests/validate-distribution.sh" >/dev/null 2>&1; then
+    fail "root .git pointer to an unrelated Git directory was accepted"
+  else
+    pass "root .git pointer to an unrelated Git directory is rejected"
+  fi
+
+  if ! run_worktree_self_test_git -C "${ordinary_root}" worktree add -q -b validator-wrong-reverse "${wrong_reverse_root}"; then
+    abort_worktree_self_test_setup "unable to create wrong reverse-pointer fixture"
+    return 1
+  fi
+  local wrong_reverse_git_dir
+  if ! wrong_reverse_git_dir="$(run_worktree_self_test_git -C "${wrong_reverse_root}" rev-parse --path-format=absolute --git-dir)"; then
+    abort_worktree_self_test_setup "unable to resolve wrong reverse-pointer fixture gitdir"
+    return 1
+  fi
+  if [[ "${wrong_reverse_git_dir}" != "${ordinary_root}/.git/worktrees/"* || ! -d "${wrong_reverse_git_dir}" ]]; then
+    abort_worktree_self_test_setup "wrong reverse-pointer fixture gitdir is outside the expected worktrees directory"
+    return 1
+  fi
+  printf '%s\n' "${ordinary_root}/.git" > "${wrong_reverse_git_dir}/gitdir"
+  if bash "${wrong_reverse_root}/tests/validate-distribution.sh" >/dev/null 2>&1; then
+    fail "linked worktree with an incorrect gitdir reverse pointer was accepted"
+  else
+    pass "linked worktree with an incorrect gitdir reverse pointer is rejected"
+  fi
+
+  if ! run_worktree_self_test_git -C "${ordinary_root}" worktree add -q -b validator-missing-reverse "${missing_reverse_root}"; then
+    abort_worktree_self_test_setup "unable to create missing reverse-pointer fixture"
+    return 1
+  fi
+  local missing_reverse_git_dir
+  if ! missing_reverse_git_dir="$(run_worktree_self_test_git -C "${missing_reverse_root}" rev-parse --path-format=absolute --git-dir)"; then
+    abort_worktree_self_test_setup "unable to resolve missing reverse-pointer fixture gitdir"
+    return 1
+  fi
+  if [[ "${missing_reverse_git_dir}" != "${ordinary_root}/.git/worktrees/"* || ! -d "${missing_reverse_git_dir}" ]]; then
+    abort_worktree_self_test_setup "missing reverse-pointer fixture gitdir is outside the expected worktrees directory"
+    return 1
+  fi
+  if ! rm -f -- "${missing_reverse_git_dir}/gitdir"; then
+    abort_worktree_self_test_setup "unable to remove linked-worktree reverse pointer fixture"
+    return 1
+  fi
+  if bash "${missing_reverse_root}/tests/validate-distribution.sh" >/dev/null 2>&1; then
+    fail "linked worktree with a missing gitdir reverse pointer was accepted"
+  else
+    pass "linked worktree with a missing gitdir reverse pointer is rejected"
+  fi
+
+  if GIT_DIR="${ordinary_root}/.git" GIT_WORK_TREE="${ordinary_root}" \
+    bash "${linked_root}/tests/validate-distribution.sh" >/dev/null 2>&1; then
+    pass "inherited Git repository variables do not override linked-worktree detection"
+  else
+    fail "inherited Git repository variables overrode linked-worktree detection"
+  fi
+
+  printf 'gitdir: /definitely/missing/gitdir\n' > "${malformed_root}/.git"
+  if bash "${malformed_root}/tests/validate-distribution.sh" >/dev/null 2>&1; then
+    fail "malformed root .git pointer was accepted"
+  else
+    pass "malformed root .git pointer is rejected"
+  fi
+
+  printf 'forbidden fixture\n' > "${unexpected_root}/unexpected.txt"
+  if bash "${unexpected_root}/tests/validate-distribution.sh" >/dev/null 2>&1; then
+    fail "unexpected distribution file was accepted"
+  else
+    pass "unexpected distribution file remains rejected"
+  fi
+
+  if (( failures > 0 )); then
+    if ! cleanup_worktree_self_test; then
+      fail "unable to clean up worktree self-test fixture directory"
+    fi
+    trap - EXIT
+    printf 'FAIL: worktree compatibility self-test has %d failure(s).\n' "${failures}" >&2
+    return 1
+  fi
+  if ! cleanup_worktree_self_test; then
+    fail "unable to clean up worktree self-test fixture directory"
+    trap - EXIT
+    return 1
+  fi
+  trap - EXIT
+  printf 'PASS: worktree compatibility self-test passed.\n'
+}
+
+if [[ "${1:-}" == "--self-test-worktree" ]]; then
+  run_worktree_self_test
+  exit $?
+fi
+
+detect_root_git_metadata() {
+  local metadata_path="${MARKETPLACE_ROOT}/.git"
+
+  if [[ ! -e "${metadata_path}" && ! -L "${metadata_path}" ]]; then
+    printf 'none\n'
+    return
+  fi
+  if [[ -L "${metadata_path}" ]]; then
+    printf 'invalid\n'
+    return
+  fi
+  if [[ -d "${metadata_path}" ]]; then
+    if python3 - "${MARKETPLACE_ROOT}" <<'PY'
+import os
+import pathlib
+import stat
+import subprocess
+import sys
+
+root = pathlib.Path(sys.argv[1]).resolve(strict=True)
+metadata = root / ".git"
+git_env = {
+    key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+}
+git_env.update(
+    {
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+    }
+)
+
+try:
+    metadata_stat = metadata.lstat()
+    resolved_metadata = metadata.resolve(strict=True)
+    actual_git_dir = pathlib.Path(
+        subprocess.check_output(
+            ["git", "-C", str(root), "rev-parse", "--path-format=absolute", "--git-dir"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            env=git_env,
+        ).strip()
+    ).resolve(strict=True)
+    actual_common_dir = pathlib.Path(
+        subprocess.check_output(
+            [
+                "git",
+                "-C",
+                str(root),
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            env=git_env,
+        ).strip()
+    ).resolve(strict=True)
+    actual_top = pathlib.Path(
+        subprocess.check_output(
+            ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            env=git_env,
+        ).strip()
+    ).resolve(strict=True)
+    inside_work_tree = subprocess.check_output(
+        ["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
+        text=True,
+        stderr=subprocess.DEVNULL,
+        env=git_env,
+    ).strip()
+    bare_repository = subprocess.check_output(
+        ["git", "-C", str(root), "rev-parse", "--is-bare-repository"],
+        text=True,
+        stderr=subprocess.DEVNULL,
+        env=git_env,
+    ).strip()
+except (OSError, subprocess.CalledProcessError, RuntimeError):
+    raise SystemExit(1)
+
+if (
+    stat.S_ISLNK(metadata_stat.st_mode)
+    or not stat.S_ISDIR(metadata_stat.st_mode)
+    or resolved_metadata != metadata
+    or actual_git_dir != metadata
+    or actual_common_dir != metadata
+    or actual_top != root
+    or inside_work_tree != "true"
+    or bare_repository != "false"
+):
+    raise SystemExit(1)
+PY
+    then
+      printf 'directory\n'
+    else
+      printf 'invalid\n'
+    fi
+    return
+  fi
+  if [[ ! -f "${metadata_path}" ]]; then
+    printf 'invalid\n'
+    return
+  fi
+
+  if python3 - "${MARKETPLACE_ROOT}" <<'PY'
+import os
+import pathlib
+import re
+import stat
+import subprocess
+import sys
+
+root = pathlib.Path(sys.argv[1]).resolve(strict=True)
+metadata = root / ".git"
+
+try:
+    text = metadata.read_text(encoding="utf-8")
+except (OSError, UnicodeError):
+    raise SystemExit(1)
+
+match = re.fullmatch(r"gitdir: ([^\r\n]+)\r?\n?", text)
+if not match:
+    raise SystemExit(1)
+
+declared = pathlib.Path(match.group(1))
+if not declared.is_absolute():
+    declared = root / declared
+
+git_env = {
+    key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+}
+git_env.update(
+    {
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+    }
+)
+
+try:
+    declared = declared.resolve(strict=True)
+    actual_git_dir = pathlib.Path(
+        subprocess.check_output(
+            ["git", "-C", str(root), "rev-parse", "--path-format=absolute", "--git-dir"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            env=git_env,
+        ).strip()
+    ).resolve(strict=True)
+    actual_common_dir = pathlib.Path(
+        subprocess.check_output(
+            [
+                "git",
+                "-C",
+                str(root),
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            env=git_env,
+        ).strip()
+    ).resolve(strict=True)
+    actual_top = pathlib.Path(
+        subprocess.check_output(
+            ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            env=git_env,
+        ).strip()
+    ).resolve(strict=True)
+except (OSError, subprocess.CalledProcessError, RuntimeError):
+    raise SystemExit(1)
+
+if (
+    declared != actual_git_dir
+    or actual_top != root
+    or not actual_git_dir.is_dir()
+    or not actual_common_dir.is_dir()
+    or actual_git_dir.parent != actual_common_dir / "worktrees"
+):
+    raise SystemExit(1)
+
+reverse_pointer = actual_git_dir / "gitdir"
+try:
+    reverse_pointer_stat = reverse_pointer.lstat()
+except OSError:
+    raise SystemExit(1)
+
+if stat.S_ISLNK(reverse_pointer_stat.st_mode) or not stat.S_ISREG(
+    reverse_pointer_stat.st_mode
+):
+    raise SystemExit(1)
+
+try:
+    reverse_pointer_text = reverse_pointer.read_text(encoding="utf-8")
+except (OSError, UnicodeError):
+    raise SystemExit(1)
+
+reverse_match = re.fullmatch(r"([^\r\n]+)\r?\n?", reverse_pointer_text)
+if not reverse_match:
+    raise SystemExit(1)
+
+reverse_declared = pathlib.Path(reverse_match.group(1))
+if not reverse_declared.is_absolute():
+    reverse_declared = actual_git_dir / reverse_declared
+
+try:
+    reverse_declared = reverse_declared.resolve(strict=True)
+    metadata = metadata.resolve(strict=True)
+except (OSError, RuntimeError):
+    raise SystemExit(1)
+
+if reverse_declared != metadata:
+    raise SystemExit(1)
+PY
+  then
+    printf 'pointer\n'
+  else
+    printf 'invalid\n'
+  fi
+}
+
+root_git_metadata_kind="$(detect_root_git_metadata)"
+
 required_files=(
   ".agents/plugins/marketplace.json"
   "plugins/zero-to-one-product/.codex-plugin/plugin.json"
@@ -41,7 +586,7 @@ for relative_path in "${required_files[@]}"; do
   fi
 done
 
-if worktree_issues="$(python3 - "${MARKETPLACE_ROOT}" <<'PY'
+if worktree_issues="$(python3 - "${MARKETPLACE_ROOT}" "${root_git_metadata_kind}" <<'PY'
 import os
 import pathlib
 import re
@@ -49,6 +594,7 @@ import stat
 import sys
 
 root = pathlib.Path(sys.argv[1])
+root_git_metadata_kind = sys.argv[2]
 allowed_files = {
     ".agents/plugins/marketplace.json",
     "plugins/zero-to-one-product/.codex-plugin/plugin.json",
@@ -106,10 +652,14 @@ for current, directory_names, file_names in os.walk(root, topdown=True, followli
         entry_stat = entry.lstat()
         relative = entry.relative_to(root).as_posix()
         if directory_name == ".git" and current_path == root:
-            if stat.S_ISDIR(entry_stat.st_mode) and not stat.S_ISLNK(entry_stat.st_mode):
+            if (
+                root_git_metadata_kind == "directory"
+                and stat.S_ISDIR(entry_stat.st_mode)
+                and not stat.S_ISLNK(entry_stat.st_mode)
+            ):
                 directory_names.remove(directory_name)
                 continue
-            issues.append(f"root .git metadata must be a non-symlink directory: {relative}")
+            issues.append(f"invalid root .git metadata: {relative}")
         elif directory_name == ".git" and stat.S_ISDIR(entry_stat.st_mode):
             issues.append(f"nested .git directory forbidden: {relative}")
 
@@ -124,6 +674,15 @@ for current, directory_names, file_names in os.walk(root, topdown=True, followli
         entry = current_path / file_name
         relative = entry.relative_to(root).as_posix()
         entry_stat = entry.lstat()
+        if relative == ".git":
+            if (
+                root_git_metadata_kind == "pointer"
+                and stat.S_ISREG(entry_stat.st_mode)
+                and not stat.S_ISLNK(entry_stat.st_mode)
+            ):
+                continue
+            issues.append(f"invalid root .git metadata: {relative}")
+            continue
         if stat.S_ISLNK(entry_stat.st_mode):
             issues.append(f"symlink forbidden: {relative}")
             continue
@@ -173,7 +732,7 @@ fi
 checksums_file="${MARKETPLACE_ROOT}/checksums.sha256"
 if [[ ! -f "${checksums_file}" || -L "${checksums_file}" ]]; then
   fail "checksums.sha256 missing; unable to verify distribution hashes"
-elif checksum_issues="$(python3 - "${MARKETPLACE_ROOT}" <<'PY'
+elif checksum_issues="$(python3 - "${MARKETPLACE_ROOT}" "${root_git_metadata_kind}" <<'PY'
 import hashlib
 import os
 import pathlib
@@ -182,6 +741,7 @@ import stat
 import sys
 
 root = pathlib.Path(sys.argv[1])
+root_git_metadata_kind = sys.argv[2]
 manifest_path = root / "checksums.sha256"
 line_pattern = re.compile(r"^([0-9A-Fa-f]{64})  (.+)$")
 issues = []
@@ -219,7 +779,11 @@ for current, directory_names, file_names in os.walk(root, topdown=True, followli
     if ".git" in directory_names and current_path == root:
         root_git = current_path / ".git"
         root_git_stat = root_git.lstat()
-        if stat.S_ISDIR(root_git_stat.st_mode) and not stat.S_ISLNK(root_git_stat.st_mode):
+        if (
+            root_git_metadata_kind == "directory"
+            and stat.S_ISDIR(root_git_stat.st_mode)
+            and not stat.S_ISLNK(root_git_stat.st_mode)
+        ):
             directory_names.remove(".git")
     for file_name in file_names:
         entry = current_path / file_name
@@ -227,6 +791,8 @@ for current, directory_names, file_names in os.walk(root, topdown=True, followli
         if not stat.S_ISREG(entry_stat.st_mode) or stat.S_ISLNK(entry_stat.st_mode):
             continue
         relative = entry.relative_to(root).as_posix()
+        if relative == ".git" and root_git_metadata_kind == "pointer":
+            continue
         if relative == "checksums.sha256":
             continue
         actual[relative] = hashlib.sha256(entry.read_bytes()).hexdigest()
