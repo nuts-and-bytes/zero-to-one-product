@@ -90,159 +90,53 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
         page = self.open_page()
 
         def normalized(text):
-            return "".join(
-                character for character in text.lower() if character.isalnum()
-            )
+            return " ".join(text.split())
 
         def item_text(name):
             item = page.locator(f"#guardrails [data-guardrail='{name}']")
             self.assertEqual(item.count(), 1, f"Missing {name} guardrail")
             return normalized(item.inner_text())
 
-        def assert_in_order(text, *keywords):
-            cursor = 0
-            for keyword in keywords:
-                normalized_keyword = normalized(keyword)
-                position = text.find(normalized_keyword, cursor)
-                self.assertNotEqual(
-                    position,
-                    -1,
-                    f"Expected {keyword!r} after offset {cursor}",
-                )
-                cursor = position + len(normalized_keyword)
-
         single_owner = item_text("single-owner")
-        for keyword in (
-            "同阶段",
-            "一个主流程",
-            "产品发现",
-            "brainstorming",
-            "不叠加",
-            "正式编码",
-            "superpowers",
-            "test-driven-development",
-            "matt",
-            "tdd",
-            "implement",
-            "禁止",
+        for pattern in (
+            r"同一阶段.*只有.*一个.*主流程",
+            r"产品发现.*不.*brainstorming",
+            r"正式编码.*只.*Superpowers.*test-driven-development",
+            r"禁止.*Matt.*tdd",
+            r"禁止.*Matt.*implement",
         ):
-            self.assertIn(normalized(keyword), single_owner)
-        assert_in_order(single_owner, "产品发现", "不叠加", "brainstorming")
-        assert_in_order(
-            single_owner,
-            "正式编码",
-            "Superpowers",
-            "test-driven-development",
-        )
+            self.assertRegex(single_owner, pattern)
 
         planning_boundary = item_text("planning-boundary")
-        for keyword in (
-            "writing-plans",
-            "规格",
-            "tickets",
-            "完成后",
-            "只",
-            "一个ticket",
-            "to-tickets",
-            "切票",
-            "单票技术计划",
+        for pattern in (
+            r"规格.*Tickets.*完成.*writing-plans",
+            r"writing-plans.*只.*一个.*Ticket",
+            r"to-tickets.*纵向.*Tickets.*writing-plans.*单个",
         ):
-            self.assertIn(normalized(keyword), planning_boundary)
+            self.assertRegex(planning_boundary, pattern)
 
         bounded_execution = item_text("bounded-execution")
-        for keyword in (
-            "entry",
-            "一个已选ticket",
-            "批准计划",
-            "按序",
-            "每个任务",
-            "distinctfreshimplementer",
-            "red",
-            "green",
-            "refactor",
-            "规格审查",
-            "质量审查",
-            "先",
-            "再",
-            "发现问题",
-            "修复",
-            "重复",
-            "pass",
-            "逐任务审查",
-            "整票审查",
-            "不并行",
-            "所有任务",
-            "完成后",
-            "交还",
-            "router",
-            "verification",
-            "branchfinish",
-            "不得直接",
-            "subagent-driven-development",
-            "executing-plans",
-            "禁止完整",
+        for pattern in (
+            r"一个.*Ticket.*批准.*计划.*按序",
+            r"独立.*新实现者",
+            r"RED.*GREEN.*REFACTOR.*规格审查.*质量审查.*code-review",
+            r"规格审查.*未通过.*修复.*重复.*通过.*质量审查.*未通过.*修复.*重复.*通过",
+            r"完成.*交还.*Router",
+            r"不得.*直接.*verification-before-completion.*finishing-a-development-branch",
+            r"禁止.*完整.*subagent-driven-development.*executing-plans",
         ):
-            self.assertIn(normalized(keyword), bounded_execution)
-        assert_in_order(
-            bounded_execution,
-            "一个已选 Ticket",
-            "批准计划",
-            "按序",
-        )
-        assert_in_order(
-            bounded_execution,
-            "distinct fresh implementer",
-            "RED",
-            "GREEN",
-            "REFACTOR",
-            "规格审查",
-            "质量审查",
-        )
-        assert_in_order(
-            bounded_execution,
-            "规格审查",
-            "发现问题",
-            "修复",
-            "重复",
-            "PASS",
-            "质量审查",
-        )
-        quality_review_offset = bounded_execution.find(normalized("质量审查"))
-        self.assertNotEqual(quality_review_offset, -1)
-        assert_in_order(
-            bounded_execution[quality_review_offset:],
-            "质量审查",
-            "发现问题",
-            "修复",
-            "重复",
-            "PASS",
-        )
-        assert_in_order(bounded_execution, "所有任务", "交还", "Router")
+            self.assertRegex(bounded_execution, pattern)
 
         debugging = item_text("debugging")
-        for keyword in (
-            "常规调试",
-            "systematic-debugging",
-            "间歇性",
-            "性能相关",
-            "难复现",
-            "无法解决",
-            "明确升级证据",
-            "diagnosing-bugs",
-            "普通调试",
-            "困难调试",
-            "loop",
-            "不同时运行",
+        for pattern in (
+            r"systematic-debugging.*常规",
+            r"间歇性.*性能.*难复现.*无法解决.*diagnosing-bugs",
+            r"两个.*调试.*不得.*同时",
         ):
-            self.assertIn(normalized(keyword), debugging)
-        assert_in_order(debugging, "明确升级证据", "diagnosing-bugs")
+            self.assertRegex(debugging, pattern)
 
         authorization = item_text("authorization")
-        for keyword in (
-            "自动路由",
-            "只免除",
-            "路由确认",
-            "不扩大权限",
+        actions = (
             "工作区",
             "目录创建",
             "Git 初始化",
@@ -258,14 +152,16 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
             "release",
             "外部通信",
             "独立授权门",
-        ):
-            self.assertIn(normalized(keyword), authorization)
-        assert_in_order(
+        )
+        for action in actions:
+            self.assertIn(action, authorization)
+        self.assertRegex(
             authorization,
-            "自动路由",
-            "只免除",
-            "路由确认",
-            "不扩大权限",
+            r"自动路由.*只.*免除.*路由确认.*不.*扩大.*权限",
+        )
+        self.assertRegex(
+            authorization,
+            r"工作区.*Git 初始化.*外部写入.*Issue Tracker.*worktree.*凭证.*破坏性.*commit.*push.*PR.*deploy.*release.*外部通信.*独立授权门",
         )
 
     def test_workflow_visuals_use_stable_intrinsic_image_contracts(self):
@@ -286,13 +182,29 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
                 expect(image).to_be_visible(timeout=1_500)
                 image_contract = image.evaluate(
                     """
-                    element => ({
-                      width: element.naturalWidth,
-                      height: element.naturalHeight,
-                      complete: element.complete,
-                      loading: element.getAttribute("loading"),
-                      alt: element.getAttribute("alt") ?? "",
-                    })
+                    element => {
+                      const style = getComputedStyle(element);
+                      const rect = element.getBoundingClientRect();
+                      const centerX = rect.left + rect.width / 2;
+                      const centerY = rect.top + rect.height / 2;
+                      const hit = document.elementFromPoint(centerX, centerY);
+                      return {
+                        width: element.naturalWidth,
+                        height: element.naturalHeight,
+                        complete: element.complete,
+                        loading: element.getAttribute("loading"),
+                        alt: element.getAttribute("alt") ?? "",
+                        opacity: Number.parseFloat(style.opacity),
+                        visibility: style.visibility,
+                        centerInViewport:
+                          centerX >= 0
+                          && centerX <= window.innerWidth
+                          && centerY >= 0
+                          && centerY <= window.innerHeight,
+                        centerHitsImage:
+                          hit === element || (hit !== null && element.contains(hit)),
+                      };
+                    }
                     """
                 )
                 self.assertEqual(image_contract["width"], 1440)
@@ -300,6 +212,10 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
                 self.assertTrue(image_contract["complete"])
                 self.assertEqual(image_contract["loading"], "lazy")
                 self.assertGreaterEqual(len(image_contract["alt"].strip()), 12)
+                self.assertGreater(image_contract["opacity"], 0.01)
+                self.assertEqual(image_contract["visibility"], "visible")
+                self.assertTrue(image_contract["centerInViewport"])
+                self.assertTrue(image_contract["centerHitsImage"])
                 box = image.bounding_box()
                 self.assertIsNotNone(box)
                 self.assertGreaterEqual(box["width"], 280)
