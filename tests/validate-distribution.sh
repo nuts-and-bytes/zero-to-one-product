@@ -113,6 +113,7 @@ PY
   local malformed_root="${fixture_root}/malformed"
   local unexpected_root="${fixture_root}/unexpected"
   local invalid_webp_root="${fixture_root}/invalid-webp"
+  local trailing_webp_root="${fixture_root}/trailing-webp"
   local hostile_home="${fixture_root}/hostile-home"
   local hostile_hooks="${fixture_root}/hostile-hooks"
 
@@ -164,7 +165,8 @@ PY
     "${forged_root}" \
     "${malformed_root}" \
     "${unexpected_root}" \
-    "${invalid_webp_root}"; do
+    "${invalid_webp_root}" \
+    "${trailing_webp_root}"; do
     if ! mkdir -p "${copied_root}"; then
       abort_worktree_self_test_setup "unable to create distribution fixture directory"
       return 1
@@ -353,6 +355,46 @@ PY
     pass "invalid WebP is rejected after its checksum is updated"
   else
     fail "invalid WebP fixture was rejected without the WebP signature gate"
+  fi
+
+  if ! python3 - "${trailing_webp_root}" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+webp = root / "docs/assets/hero-route.webp"
+data = bytearray(webp.read_bytes())
+data.extend(b"JUNK\x00\x00\x00\x00")
+data[4:8] = (len(data) - 8).to_bytes(4, "little")
+webp.write_bytes(data)
+
+entries = []
+for entry in root.rglob("*"):
+    if not entry.is_file() or entry == root / "checksums.sha256":
+        continue
+    relative = entry.relative_to(root).as_posix()
+    entries.append((relative, hashlib.sha256(entry.read_bytes()).hexdigest()))
+entries.sort()
+(root / "checksums.sha256").write_text(
+    "".join(f"{digest}  {relative}\n" for relative, digest in entries),
+    encoding="utf-8",
+)
+PY
+  then
+    abort_worktree_self_test_setup "unable to create trailing WebP fixture"
+    return 1
+  fi
+  local trailing_webp_output
+  if trailing_webp_output="$(bash "${trailing_webp_root}/tests/validate-distribution.sh" 2>&1)"; then
+    fail "trailing WebP fixture was accepted"
+  elif grep -Fq "unexpected trailing WebP data: docs/assets/hero-route.webp" \
+    <<< "${trailing_webp_output}" \
+    && grep -Fq "[PASS] checksums.sha256 exactly covers and matches all other regular files" \
+      <<< "${trailing_webp_output}"; then
+    pass "trailing WebP data is rejected after its checksum is updated"
+  else
+    fail "trailing WebP fixture was rejected without the chunk-end gate"
   fi
 
   if (( failures > 0 )); then
@@ -776,8 +818,16 @@ for current, directory_names, file_names in os.walk(root, topdown=True, followli
                 issues.append(f"WebP first chunk must be static lossy VP8: {relative}")
                 continue
             chunk_length = int.from_bytes(data[16:20], "little")
-            if chunk_length < 10 or 20 + chunk_length > len(data):
+            chunk_data_end = 20 + chunk_length
+            padded_end = chunk_data_end + (chunk_length & 1)
+            if chunk_length < 10 or chunk_data_end > len(data):
                 issues.append(f"invalid WebP VP8 chunk length: {relative}")
+                continue
+            if padded_end != len(data):
+                issues.append(f"unexpected trailing WebP data: {relative}")
+                continue
+            if chunk_length & 1 and data[chunk_data_end] != 0:
+                issues.append(f"invalid WebP VP8 padding byte: {relative}")
                 continue
             if data[23:26] != b"\x9d\x01\x2a":
                 issues.append(f"invalid WebP VP8 start code: {relative}")
