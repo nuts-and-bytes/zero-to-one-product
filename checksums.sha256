@@ -10,4 +10,4 @@ cb45e935f6cb1d30eafefa89564a715cd80eb69428065e2c78ddb563a210fee8  plugins/zero-t
 be24bc288ee389eaaf3b451822ece4302fff68fe11305661186cfc564a71ac3c  plugins/zero-to-one-product/skills/zero-to-one-product/references/dependencies.md
 f284acce287417880c49eda720b23ab7ff93d835eac9ba9891521f6daf38d690  plugins/zero-to-one-product/skills/zero-to-one-product/references/matt-bridges.md
 03b1850e2f62bc7f3b61cc094cceee1fbd96d1df111bae5f1ca089eabdc333dc  plugins/zero-to-one-product/skills/zero-to-one-product/templates/state.md
-500a6c7c64125ebede0bd073099a8a635a2acc86e455c4ffabb2e2b3f2c9612e  tests/validate-distribution.sh
+ae38923998ca1707c9067f345110395bc98180f7fd89ddd1670aa6cb753c3a6b  tests/validate-distribution.sh
