@@ -57,20 +57,18 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
 
     def test_ownership_assigns_each_role_its_full_responsibility(self):
         page = self.open_page()
-        ownership = page.locator("#ownership")
-
-        self.assertEqual(ownership.count(), 1, "Missing #ownership section")
-        ownership_text = ownership.inner_text()
         expected_responsibilities = {
-            "Matt": ("产品形成", "困难调试", "整票审查"),
-            "Router": (
+            "matt": ("Matt", "产品形成", "困难调试", "整票审查"),
+            "router": (
+                "Router",
                 "分类",
                 "证据恢复",
                 "Git gate",
                 "有界执行",
                 "阶段交还",
             ),
-            "Superpowers": (
+            "superpowers": (
+                "Superpowers",
                 "隔离",
                 "单票技术计划",
                 "TDD",
@@ -80,68 +78,173 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
                 "分支收尾",
             ),
         }
-        for role, responsibilities in expected_responsibilities.items():
-            with self.subTest(role=role):
-                self.assertIn(role, ownership_text)
-                for responsibility in responsibilities:
-                    self.assertIn(responsibility, ownership_text)
+        for owner, expected_text in expected_responsibilities.items():
+            with self.subTest(owner=owner):
+                card = page.locator(f"#ownership [data-owner='{owner}']")
+                self.assertEqual(card.count(), 1, f"Missing {owner} owner card")
+                card_text = card.inner_text()
+                for keyword in expected_text:
+                    self.assertIn(keyword, card_text)
 
     def test_guardrails_cover_execution_debugging_and_authorization(self):
         page = self.open_page()
-        guardrails = page.locator("#guardrails")
 
-        self.assertEqual(guardrails.count(), 1, "Missing #guardrails section")
-        guardrails_text = guardrails.inner_text()
-        compact_guardrails_text = "".join(guardrails_text.split())
+        def normalized(text):
+            return "".join(
+                character for character in text.lower() if character.isalnum()
+            )
 
-        expected_process_rules = (
-            "同阶段一个主流程",
-            "产品发现不叠加 brainstorming",
-            "正式编码只使用 Superpowers test-driven-development",
-            "writing-plans 只在规格和 Tickets 完成后运行，且仅服务一个 Ticket",
-            "to-tickets 负责切票，writing-plans 负责单票技术计划",
-            "禁止使用 Matt tdd / implement",
-            "禁止完整运行 subagent-driven-development / executing-plans",
-            "普通调试与困难调试不得并行",
-            "逐任务审查与整票审查不得并行",
-            "bounded entry = 一个已选 Ticket + 批准计划 + 按序执行",
-            "每个任务使用 distinct fresh implementer",
-            "完成所有任务后交还 Router",
-            "不得从 bounded 直接进入 verification / branch finish",
+        def item_text(name):
+            item = page.locator(f"#guardrails [data-guardrail='{name}']")
+            self.assertEqual(item.count(), 1, f"Missing {name} guardrail")
+            return normalized(item.inner_text())
+
+        def assert_in_order(text, *keywords):
+            cursor = 0
+            for keyword in keywords:
+                normalized_keyword = normalized(keyword)
+                position = text.find(normalized_keyword, cursor)
+                self.assertNotEqual(
+                    position,
+                    -1,
+                    f"Expected {keyword!r} after offset {cursor}",
+                )
+                cursor = position + len(normalized_keyword)
+
+        single_owner = item_text("single-owner")
+        for keyword in (
+            "同阶段",
+            "一个主流程",
+            "产品发现",
+            "brainstorming",
+            "不叠加",
+            "正式编码",
+            "superpowers",
+            "test-driven-development",
+            "matt",
+            "tdd",
+            "implement",
+            "禁止",
+        ):
+            self.assertIn(normalized(keyword), single_owner)
+        assert_in_order(single_owner, "产品发现", "不叠加", "brainstorming")
+        assert_in_order(
+            single_owner,
+            "正式编码",
+            "Superpowers",
+            "test-driven-development",
         )
-        for rule in expected_process_rules:
-            with self.subTest(rule=rule):
-                self.assertIn("".join(rule.split()), compact_guardrails_text)
 
-        expected_debugging_rules = (
-            "常规调试使用 systematic-debugging",
+        planning_boundary = item_text("planning-boundary")
+        for keyword in (
+            "writing-plans",
+            "规格",
+            "tickets",
+            "完成后",
+            "只",
+            "一个ticket",
+            "to-tickets",
+            "切票",
+            "单票技术计划",
+        ):
+            self.assertIn(normalized(keyword), planning_boundary)
+
+        bounded_execution = item_text("bounded-execution")
+        for keyword in (
+            "entry",
+            "一个已选ticket",
+            "批准计划",
+            "按序",
+            "每个任务",
+            "distinctfreshimplementer",
+            "red",
+            "green",
+            "refactor",
+            "规格审查",
+            "质量审查",
+            "先",
+            "再",
+            "发现问题",
+            "修复",
+            "重复",
+            "pass",
+            "逐任务审查",
+            "整票审查",
+            "不并行",
+            "所有任务",
+            "完成后",
+            "交还",
+            "router",
+            "verification",
+            "branchfinish",
+            "不得直接",
+            "subagent-driven-development",
+            "executing-plans",
+            "禁止完整",
+        ):
+            self.assertIn(normalized(keyword), bounded_execution)
+        assert_in_order(
+            bounded_execution,
+            "一个已选 Ticket",
+            "批准计划",
+            "按序",
+        )
+        assert_in_order(
+            bounded_execution,
+            "distinct fresh implementer",
+            "RED",
+            "GREEN",
+            "REFACTOR",
+            "规格审查",
+            "质量审查",
+        )
+        assert_in_order(
+            bounded_execution,
+            "规格审查",
+            "发现问题",
+            "修复",
+            "重复",
+            "PASS",
+            "质量审查",
+        )
+        quality_review_offset = bounded_execution.find(normalized("质量审查"))
+        self.assertNotEqual(quality_review_offset, -1)
+        assert_in_order(
+            bounded_execution[quality_review_offset:],
+            "质量审查",
+            "发现问题",
+            "修复",
+            "重复",
+            "PASS",
+        )
+        assert_in_order(bounded_execution, "所有任务", "交还", "Router")
+
+        debugging = item_text("debugging")
+        for keyword in (
+            "常规调试",
+            "systematic-debugging",
             "间歇性",
             "性能相关",
             "难复现",
-            "常规 systematic-debugging 无法解决",
-            "只有这些明确升级证据才使用 diagnosing-bugs",
-            "普通调试与困难调试两个 loop 不同时运行",
-        )
-        for rule in expected_debugging_rules:
-            with self.subTest(rule=rule):
-                self.assertIn("".join(rule.split()), compact_guardrails_text)
+            "无法解决",
+            "明确升级证据",
+            "diagnosing-bugs",
+            "普通调试",
+            "困难调试",
+            "loop",
+            "不同时运行",
+        ):
+            self.assertIn(normalized(keyword), debugging)
+        assert_in_order(debugging, "明确升级证据", "diagnosing-bugs")
 
-        expected_review_rules = (
-            "每个任务按新实现者→RED–GREEN–REFACTOR→规格审查→质量审查执行",
-            "规格审查发现问题则修复并重复至 PASS，再进入质量审查",
-            "质量审查发现问题则修复并重复至 PASS",
-            "完成所有任务后进行整票 code-review",
-        )
-        for rule in expected_review_rules:
-            with self.subTest(rule=rule):
-                self.assertIn("".join(rule.split()), compact_guardrails_text)
-
-        self.assertIn(
-            "".join("自动路由只免除路由确认，不扩大权限".split()),
-            compact_guardrails_text,
-        )
-        for gated_action in (
-            "工作区/目录创建",
+        authorization = item_text("authorization")
+        for keyword in (
+            "自动路由",
+            "只免除",
+            "路由确认",
+            "不扩大权限",
+            "工作区",
+            "目录创建",
             "Git 初始化",
             "外部写入",
             "Issue Tracker",
@@ -151,12 +254,19 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
             "commit",
             "push",
             "PR",
-            "deploy/release",
+            "deploy",
+            "release",
             "外部通信",
+            "独立授权门",
         ):
-            with self.subTest(gated_action=gated_action):
-                self.assertIn("".join(gated_action.split()), compact_guardrails_text)
-        self.assertIn("均保留独立授权门", compact_guardrails_text)
+            self.assertIn(normalized(keyword), authorization)
+        assert_in_order(
+            authorization,
+            "自动路由",
+            "只免除",
+            "路由确认",
+            "不扩大权限",
+        )
 
     def test_workflow_visuals_use_stable_intrinsic_image_contracts(self):
         page = self.open_page()
@@ -165,6 +275,15 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
             with self.subTest(visual=visual):
                 image = page.locator(f"img[data-visual='{visual}']")
                 self.assertEqual(image.count(), 1, f"Missing {visual} visual")
+                image.scroll_into_view_if_needed(timeout=1_500)
+                image_handle = image.element_handle()
+                self.assertIsNotNone(image_handle)
+                page.wait_for_function(
+                    "element => element.naturalWidth > 0",
+                    arg=image_handle,
+                    timeout=1_500,
+                )
+                expect(image).to_be_visible(timeout=1_500)
                 image_contract = image.evaluate(
                     """
                     element => ({
@@ -181,9 +300,28 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
                 self.assertTrue(image_contract["complete"])
                 self.assertEqual(image_contract["loading"], "lazy")
                 self.assertGreaterEqual(len(image_contract["alt"].strip()), 12)
+                box = image.bounding_box()
+                self.assertIsNotNone(box)
+                self.assertGreaterEqual(box["width"], 280)
+                self.assertGreaterEqual(box["height"], 150)
+                self.assertAlmostEqual(
+                    box["height"] / box["width"],
+                    811 / 1440,
+                    delta=0.02,
+                )
+                if visual == "fixed-route":
+                    for keyword in ("固定", "阶段", "路线"):
+                        self.assertIn(keyword, image_contract["alt"])
+                else:
+                    for role in ("Matt", "Router", "Superpowers"):
+                        self.assertIn(role, image_contract["alt"])
 
     def test_mobile_keeps_all_stages_and_new_sections_visible(self):
-        page = self.open_page(width=390, height=844)
+        page = self.open_page(
+            width=390,
+            height=844,
+            reduced_motion="reduce",
+        )
 
         scroll_width, client_width = page.evaluate(
             "[document.documentElement.scrollWidth, "
@@ -191,47 +329,90 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
         )
         self.assertLessEqual(scroll_width, client_width)
 
-        owners = page.locator("#workflow [data-stage] .stage-owner")
-        self.assertEqual(owners.count(), 13)
-        for index in range(owners.count()):
-            with self.subTest(stage=index + 1):
-                owner = owners.nth(index)
-                owner.scroll_into_view_if_needed()
-                expect(owner).to_be_visible()
-                owner_state = owner.evaluate(
-                    """
-                    element => {
-                      const style = getComputedStyle(element);
-                      const rect = element.getBoundingClientRect();
-                      const centerX = rect.left + rect.width / 2;
-                      const centerY = rect.top + rect.height / 2;
-                      const hit = document.elementFromPoint(centerX, centerY);
-                      return {
-                        text: element.textContent.trim(),
-                        visibility: style.visibility,
-                        opacity: Number.parseFloat(style.opacity),
-                        centerInViewport:
-                          centerX >= 0
-                          && centerX <= window.innerWidth
-                          && centerY >= 0
-                          && centerY <= window.innerHeight,
-                        centerHitsOwner:
-                          hit === element || (hit !== null && element.contains(hit)),
-                      };
-                    }
-                    """
-                )
-                self.assertTrue(owner_state["text"])
-                self.assertEqual(owner_state["visibility"], "visible")
-                self.assertGreater(owner_state["opacity"], 0)
-                self.assertTrue(owner_state["centerInViewport"])
-                self.assertTrue(owner_state["centerHitsOwner"])
+        rows = page.locator("#workflow [data-stage]")
+        self.assertEqual(rows.count(), 13, "Expected exactly 13 workflow rows")
+        row_states = rows.evaluate_all(
+            """
+            elements => {
+              const visibility = element => {
+                if (!element) {
+                  return {
+                    text: "",
+                    visible: false,
+                    visibility: "missing",
+                    opacity: 0,
+                    width: 0,
+                    height: 0,
+                  };
+                }
+                const style = getComputedStyle(element);
+                const rect = element.getBoundingClientRect();
+                return {
+                  text: element.textContent.trim(),
+                  visible: element.checkVisibility({
+                    checkOpacity: true,
+                    checkVisibilityCSS: true,
+                  }),
+                  visibility: style.visibility,
+                  opacity: Number.parseFloat(style.opacity),
+                  width: rect.width,
+                  height: rect.height,
+                };
+              };
+              const documentWidth = document.documentElement.clientWidth;
+              return elements.map(row => {
+                const rect = row.getBoundingClientRect();
+                return {
+                  number: visibility(row.querySelector(".stage-number")),
+                  title: visibility(row.querySelector(".stage-title")),
+                  mechanism: visibility(row.querySelector(".stage-mechanism")),
+                  owner: visibility(row.querySelector(".stage-owner")),
+                  rowWidth: rect.width,
+                  rowHeight: rect.height,
+                  rowWithinDocument:
+                    rect.left >= 0 && rect.right <= documentWidth + 0.5,
+                };
+              });
+            }
+            """
+        )
+        for row_index, row_state in enumerate(row_states, start=1):
+            with self.subTest(row=row_index):
+                self.assertGreater(row_state["rowWidth"], 0)
+                self.assertGreater(row_state["rowHeight"], 0)
+                self.assertTrue(row_state["rowWithinDocument"])
+                for field in ("number", "title", "mechanism", "owner"):
+                    field_state = row_state[field]
+                    self.assertTrue(field_state["text"])
+                    self.assertTrue(field_state["visible"])
+                    self.assertEqual(field_state["visibility"], "visible")
+                    self.assertGreater(field_state["opacity"], 0)
+                    self.assertGreater(field_state["width"], 0)
+                    self.assertGreater(field_state["height"], 0)
 
-        for section_id in ("workflow", "ownership", "guardrails"):
-            with self.subTest(section=section_id):
-                section = page.locator(f"#{section_id}")
-                self.assertEqual(section.count(), 1)
-                self.assertTrue(section.is_visible())
+        sections = page.locator("#workflow, #ownership, #guardrails")
+        self.assertEqual(sections.count(), 3)
+        section_states = sections.evaluate_all(
+            """
+            elements => elements.map(element => {
+              const rect = element.getBoundingClientRect();
+              return {
+                id: element.id,
+                visible: element.checkVisibility({
+                  checkOpacity: true,
+                  checkVisibilityCSS: true,
+                }),
+                width: rect.width,
+                height: rect.height,
+              };
+            })
+            """
+        )
+        for section_state in section_states:
+            with self.subTest(section=section_state["id"]):
+                self.assertTrue(section_state["visible"])
+                self.assertGreater(section_state["width"], 0)
+                self.assertGreater(section_state["height"], 0)
 
 
 if __name__ == "__main__":
