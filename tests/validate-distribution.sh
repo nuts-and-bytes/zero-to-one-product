@@ -114,6 +114,9 @@ PY
   local unexpected_root="${fixture_root}/unexpected"
   local invalid_webp_root="${fixture_root}/invalid-webp"
   local trailing_webp_root="${fixture_root}/trailing-webp"
+  local invalid_png_root="${fixture_root}/invalid-png"
+  local trailing_png_root="${fixture_root}/trailing-png"
+  local metadata_png_root="${fixture_root}/metadata-png"
   local hostile_home="${fixture_root}/hostile-home"
   local hostile_hooks="${fixture_root}/hostile-hooks"
 
@@ -166,7 +169,10 @@ PY
     "${malformed_root}" \
     "${unexpected_root}" \
     "${invalid_webp_root}" \
-    "${trailing_webp_root}"; do
+    "${trailing_webp_root}" \
+    "${invalid_png_root}" \
+    "${trailing_png_root}" \
+    "${metadata_png_root}"; do
     if ! mkdir -p "${copied_root}"; then
       abort_worktree_self_test_setup "unable to create distribution fixture directory"
       return 1
@@ -397,6 +403,129 @@ PY
     fail "trailing WebP fixture was rejected without the chunk-end gate"
   fi
 
+  if ! python3 - "${invalid_png_root}" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+png = root / "docs/assets/share-card.png"
+data = bytearray(png.read_bytes())
+data[:8] = b"NOTAPNG!"
+png.write_bytes(data)
+
+entries = []
+for entry in root.rglob("*"):
+    if not entry.is_file() or entry == root / "checksums.sha256":
+        continue
+    relative = entry.relative_to(root).as_posix()
+    entries.append((relative, hashlib.sha256(entry.read_bytes()).hexdigest()))
+entries.sort()
+(root / "checksums.sha256").write_text(
+    "".join(f"{digest}  {relative}\n" for relative, digest in entries),
+    encoding="utf-8",
+)
+PY
+  then
+    abort_worktree_self_test_setup "unable to create invalid PNG fixture"
+    return 1
+  fi
+  local invalid_png_output
+  if invalid_png_output="$(bash "${invalid_png_root}/tests/validate-distribution.sh" 2>&1)"; then
+    fail "invalid PNG fixture was accepted"
+  elif grep -Fq "invalid PNG signature: docs/assets/share-card.png" <<< "${invalid_png_output}" \
+    && grep -Fq "[PASS] checksums.sha256 exactly covers and matches all other regular files" \
+      <<< "${invalid_png_output}"; then
+    pass "invalid PNG is rejected after its checksum is updated"
+  else
+    fail "invalid PNG fixture was rejected without the PNG signature gate"
+  fi
+
+  if ! python3 - "${trailing_png_root}" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+png = root / "docs/assets/share-card.png"
+png.write_bytes(png.read_bytes() + b"TRAILING")
+
+entries = []
+for entry in root.rglob("*"):
+    if not entry.is_file() or entry == root / "checksums.sha256":
+        continue
+    relative = entry.relative_to(root).as_posix()
+    entries.append((relative, hashlib.sha256(entry.read_bytes()).hexdigest()))
+entries.sort()
+(root / "checksums.sha256").write_text(
+    "".join(f"{digest}  {relative}\n" for relative, digest in entries),
+    encoding="utf-8",
+)
+PY
+  then
+    abort_worktree_self_test_setup "unable to create trailing PNG fixture"
+    return 1
+  fi
+  local trailing_png_output
+  if trailing_png_output="$(bash "${trailing_png_root}/tests/validate-distribution.sh" 2>&1)"; then
+    fail "trailing PNG fixture was accepted"
+  elif grep -Fq "unexpected trailing PNG data: docs/assets/share-card.png" \
+    <<< "${trailing_png_output}" \
+    && grep -Fq "[PASS] checksums.sha256 exactly covers and matches all other regular files" \
+      <<< "${trailing_png_output}"; then
+    pass "trailing PNG data is rejected after its checksum is updated"
+  else
+    fail "trailing PNG fixture was rejected without the chunk-end gate"
+  fi
+
+  if ! python3 - "${metadata_png_root}" <<'PY'
+import hashlib
+import pathlib
+import struct
+import sys
+import zlib
+
+root = pathlib.Path(sys.argv[1])
+png = root / "docs/assets/share-card.png"
+data = png.read_bytes()
+chunk_type = b"tEXt"
+payload = b"Comment\x00forbidden metadata"
+chunk = (
+    struct.pack(">I", len(payload))
+    + chunk_type
+    + payload
+    + struct.pack(">I", zlib.crc32(chunk_type + payload) & 0xFFFFFFFF)
+)
+png.write_bytes(data[:33] + chunk + data[33:])
+
+entries = []
+for entry in root.rglob("*"):
+    if not entry.is_file() or entry == root / "checksums.sha256":
+        continue
+    relative = entry.relative_to(root).as_posix()
+    entries.append((relative, hashlib.sha256(entry.read_bytes()).hexdigest()))
+entries.sort()
+(root / "checksums.sha256").write_text(
+    "".join(f"{digest}  {relative}\n" for relative, digest in entries),
+    encoding="utf-8",
+)
+PY
+  then
+    abort_worktree_self_test_setup "unable to create forbidden PNG metadata fixture"
+    return 1
+  fi
+  local metadata_png_output
+  if metadata_png_output="$(bash "${metadata_png_root}/tests/validate-distribution.sh" 2>&1)"; then
+    fail "forbidden PNG metadata fixture was accepted"
+  elif grep -Fq "forbidden PNG chunk tEXt: docs/assets/share-card.png" \
+    <<< "${metadata_png_output}" \
+    && grep -Fq "[PASS] checksums.sha256 exactly covers and matches all other regular files" \
+      <<< "${metadata_png_output}"; then
+    pass "CRC-valid forbidden PNG metadata is rejected after its checksum is updated"
+  else
+    fail "forbidden PNG metadata fixture was rejected without the chunk allowlist gate"
+  fi
+
   if (( failures > 0 )); then
     if ! cleanup_worktree_self_test; then
       fail "unable to clean up worktree self-test fixture directory"
@@ -411,7 +540,7 @@ PY
     return 1
   fi
   trap - EXIT
-  printf 'PASS: worktree compatibility self-test passed.\n'
+  printf 'PASS: worktree compatibility self-test passed (17/17).\n'
 }
 
 if [[ "${1:-}" == "--self-test-worktree" ]]; then
@@ -659,10 +788,15 @@ required_files=(
   "docs/assets/hero-route.webp"
   "docs/assets/fixed-route.webp"
   "docs/assets/role-router.webp"
+  "docs/assets/share-card.png"
+  "docs/.nojekyll"
+  "docs/robots.txt"
+  "docs/sitemap.xml"
   "requirements-dev.txt"
   "tests/site_test_support.py"
   "tests/test_site_ticket_3.py"
   "tests/test_site_ticket_4.py"
+  "tests/test_site_ticket_5.py"
   "README.md"
   "README.zh-CN.md"
   "LICENSE"
@@ -684,6 +818,7 @@ import pathlib
 import re
 import stat
 import sys
+import zlib
 
 root = pathlib.Path(sys.argv[1])
 root_git_metadata_kind = sys.argv[2]
@@ -702,10 +837,15 @@ allowed_files = {
     "docs/assets/hero-route.webp",
     "docs/assets/fixed-route.webp",
     "docs/assets/role-router.webp",
+    "docs/assets/share-card.png",
+    "docs/.nojekyll",
+    "docs/robots.txt",
+    "docs/sitemap.xml",
     "requirements-dev.txt",
     "tests/site_test_support.py",
     "tests/test_site_ticket_3.py",
     "tests/test_site_ticket_4.py",
+    "tests/test_site_ticket_5.py",
     "tests/validate-distribution.sh",
     "README.md",
     "README.zh-CN.md",
@@ -718,6 +858,9 @@ approved_webp_specs = {
     "docs/assets/hero-route.webp": (1440, 811, 450000),
     "docs/assets/fixed-route.webp": (1440, 811, 450000),
     "docs/assets/role-router.webp": (1440, 811, 450000),
+}
+approved_png_specs = {
+    "docs/assets/share-card.png": (1200, 630, 600000),
 }
 private_key = re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----")
 token_patterns = (
@@ -851,6 +994,111 @@ for current, directory_names, file_names in os.walk(root, topdown=True, followli
                     f"invalid WebP dimensions: {relative}: "
                     f"expected {expected_width}x{expected_height}, found {width}x{height}"
                 )
+                continue
+            continue
+        approved_png_spec = approved_png_specs.get(relative)
+        if approved_png_spec is not None:
+            expected_width, expected_height, maximum_size = approved_png_spec
+            if len(data) > maximum_size:
+                issues.append(f"PNG exceeds {maximum_size}-byte limit: {relative}")
+                continue
+            if len(data) < 8 or data[:8] != b"\x89PNG\r\n\x1a\n":
+                issues.append(f"invalid PNG signature: {relative}")
+                continue
+
+            position = 8
+            chunk_types = []
+            ihdr = None
+            seen_idat = False
+            idat_finished = False
+            png_error = None
+            while position < len(data):
+                if len(data) - position < 12:
+                    png_error = f"truncated PNG chunk framing: {relative}"
+                    break
+                chunk_length = int.from_bytes(data[position : position + 4], "big")
+                chunk_type = data[position + 4 : position + 8]
+                chunk_end = position + 12 + chunk_length
+                if chunk_end > len(data):
+                    png_error = f"truncated PNG chunk data: {relative}"
+                    break
+                if any(not (65 <= byte <= 90 or 97 <= byte <= 122) for byte in chunk_type):
+                    png_error = f"invalid PNG chunk type: {relative}"
+                    break
+                if 97 <= chunk_type[2] <= 122:
+                    png_error = f"invalid PNG reserved chunk bit: {relative}"
+                    break
+
+                chunk_data = data[position + 8 : position + 8 + chunk_length]
+                expected_crc = int.from_bytes(data[position + 8 + chunk_length : chunk_end], "big")
+                actual_crc = zlib.crc32(chunk_type + chunk_data) & 0xFFFFFFFF
+                chunk_name = chunk_type.decode("ascii")
+                if expected_crc != actual_crc:
+                    png_error = f"invalid PNG CRC for {chunk_name}: {relative}"
+                    break
+                if chunk_type not in {b"IHDR", b"IDAT", b"IEND"}:
+                    png_error = f"forbidden PNG chunk {chunk_name}: {relative}"
+                    break
+
+                chunk_types.append(chunk_type)
+                if chunk_type == b"IHDR":
+                    if len(chunk_types) != 1 or ihdr is not None or chunk_length != 13:
+                        png_error = f"PNG must contain one 13-byte IHDR first: {relative}"
+                        break
+                    ihdr = chunk_data
+                elif chunk_type == b"IDAT":
+                    if ihdr is None or idat_finished:
+                        png_error = f"PNG IDAT chunks must be consecutive after IHDR: {relative}"
+                        break
+                    seen_idat = True
+                else:
+                    if ihdr is None or not seen_idat or chunk_length != 0:
+                        png_error = f"PNG must end with one empty IEND after IDAT: {relative}"
+                        break
+                    idat_finished = True
+                    position = chunk_end
+                    if position != len(data):
+                        png_error = f"unexpected trailing PNG data: {relative}"
+                    break
+                position = chunk_end
+
+            if png_error is not None:
+                issues.append(png_error)
+                continue
+            if ihdr is None or chunk_types.count(b"IHDR") != 1:
+                issues.append(f"PNG must contain one 13-byte IHDR first: {relative}")
+                continue
+            if not seen_idat:
+                issues.append(f"PNG must contain at least one IDAT chunk: {relative}")
+                continue
+            if not idat_finished or chunk_types.count(b"IEND") != 1 or position != len(data):
+                issues.append(f"PNG must end with one empty IEND and no trailing data: {relative}")
+                continue
+
+            width = int.from_bytes(ihdr[0:4], "big")
+            height = int.from_bytes(ihdr[4:8], "big")
+            bit_depth, color_type, compression, filter_method, interlace = ihdr[8:13]
+            valid_depths = {
+                0: {1, 2, 4, 8, 16},
+                2: {8, 16},
+                3: {1, 2, 4, 8},
+                4: {8, 16},
+                6: {8, 16},
+            }
+            if (width, height) != (expected_width, expected_height):
+                issues.append(
+                    f"invalid PNG dimensions: {relative}: "
+                    f"expected {expected_width}x{expected_height}, found {width}x{height}"
+                )
+                continue
+            if bit_depth not in valid_depths.get(color_type, set()):
+                issues.append(
+                    f"invalid PNG bit depth/color type combination: {relative}: "
+                    f"depth {bit_depth}, color type {color_type}"
+                )
+                continue
+            if compression != 0 or filter_method != 0 or interlace not in {0, 1}:
+                issues.append(f"invalid PNG IHDR method fields: {relative}")
                 continue
             continue
         if b"\x00" in data:
