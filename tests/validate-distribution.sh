@@ -657,9 +657,12 @@ required_files=(
   "docs/styles.css"
   "docs/app.js"
   "docs/assets/hero-route.webp"
+  "docs/assets/fixed-route.webp"
+  "docs/assets/role-router.webp"
   "requirements-dev.txt"
   "tests/site_test_support.py"
   "tests/test_site_ticket_3.py"
+  "tests/test_site_ticket_4.py"
   "README.md"
   "README.zh-CN.md"
   "LICENSE"
@@ -697,9 +700,12 @@ allowed_files = {
     "docs/styles.css",
     "docs/app.js",
     "docs/assets/hero-route.webp",
+    "docs/assets/fixed-route.webp",
+    "docs/assets/role-router.webp",
     "requirements-dev.txt",
     "tests/site_test_support.py",
     "tests/test_site_ticket_3.py",
+    "tests/test_site_ticket_4.py",
     "tests/validate-distribution.sh",
     "README.md",
     "README.zh-CN.md",
@@ -708,7 +714,11 @@ allowed_files = {
     "checksums.sha256",
 }
 executable_file = "tests/validate-distribution.sh"
-approved_webp_file = "docs/assets/hero-route.webp"
+approved_webp_specs = {
+    "docs/assets/hero-route.webp": (1440, 811, 450000),
+    "docs/assets/fixed-route.webp": (1440, 811, 450000),
+    "docs/assets/role-router.webp": (1440, 811, 450000),
+}
 private_key = re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----")
 token_patterns = (
     ("GitHub fine-grained token", re.compile(r"github_pat_[A-Za-z0-9_]{20,}")),
@@ -800,9 +810,11 @@ for current, directory_names, file_names in os.walk(root, topdown=True, followli
         except OSError as error:
             issues.append(f"unable to read file: {relative}: {error}")
             continue
-        if relative == approved_webp_file:
-            if len(data) > 450000:
-                issues.append(f"WebP exceeds 450000-byte limit: {relative}")
+        approved_webp_spec = approved_webp_specs.get(relative)
+        if approved_webp_spec is not None:
+            expected_width, expected_height, maximum_size = approved_webp_spec
+            if len(data) > maximum_size:
+                issues.append(f"WebP exceeds {maximum_size}-byte limit: {relative}")
                 continue
             if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"WEBP":
                 issues.append(f"invalid WebP signature: {relative}")
@@ -834,10 +846,10 @@ for current, directory_names, file_names in os.walk(root, topdown=True, followli
                 continue
             width = int.from_bytes(data[26:28], "little") & 0x3FFF
             height = int.from_bytes(data[28:30], "little") & 0x3FFF
-            if (width, height) != (1440, 811):
+            if (width, height) != (expected_width, expected_height):
                 issues.append(
                     f"invalid WebP dimensions: {relative}: "
-                    f"expected 1440x811, found {width}x{height}"
+                    f"expected {expected_width}x{expected_height}, found {width}x{height}"
                 )
                 continue
             continue
