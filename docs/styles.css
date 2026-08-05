@@ -986,6 +986,17 @@ code {
   }
 }
 
+@media (min-width: 768px) and (max-width: 900px) {
+  .brand-name {
+    display: none;
+  }
+
+  .primary-navigation a {
+    padding-inline: 0.7rem;
+    white-space: nowrap;
+  }
+}
+
 @media (max-width: 767px) {
   html {
     scroll-padding-top: 6.5rem;

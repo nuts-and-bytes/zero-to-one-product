@@ -445,6 +445,51 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
                 self.assertGreater(section_state["width"], 0)
                 self.assertGreater(section_state["height"], 0)
 
+    def test_tablet_navigation_keeps_every_link_on_one_line(self):
+        page = self.open_page(width=768, height=1024)
+
+        header = page.locator("[data-site-header]")
+        navigation = page.get_by_role("navigation", name="主要导航")
+        links = navigation.locator("a")
+
+        self.assertEqual(links.count(), 7)
+        expect(navigation).to_be_visible()
+        header_box = header.bounding_box()
+        self.assertIsNotNone(header_box)
+        self.assertLessEqual(header_box["height"], 72)
+
+        link_contracts = links.evaluate_all(
+            """
+            elements => elements.map(element => {
+              const range = document.createRange();
+              range.selectNodeContents(element);
+              const rect = element.getBoundingClientRect();
+              return {
+                text: element.textContent.trim(),
+                visible: element.checkVisibility({
+                  checkOpacity: true,
+                  checkVisibilityCSS: true,
+                }),
+                textLineCount: range.getClientRects().length,
+                width: rect.width,
+                height: rect.height,
+              };
+            })
+            """
+        )
+        for link in link_contracts:
+            with self.subTest(link=link["text"]):
+                self.assertTrue(link["visible"])
+                self.assertEqual(link["textLineCount"], 1)
+                self.assertGreater(link["width"], 0)
+                self.assertGreater(link["height"], 0)
+
+        scroll_width, client_width = page.evaluate(
+            "[document.documentElement.scrollWidth, "
+            "document.documentElement.clientWidth]"
+        )
+        self.assertLessEqual(scroll_width, client_width)
+
 
 if __name__ == "__main__":
     import unittest
