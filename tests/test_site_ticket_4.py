@@ -110,6 +110,12 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
             self.assertEqual(item.count(), 1, f"Missing {name} guardrail")
             return normalized(item.inner_text())
 
+        def structured_rules(guardrail, attribute):
+            rules = page.locator(
+                f"#guardrails [data-guardrail='{guardrail}'] [{attribute}]"
+            )
+            return [normalized(text) for text in rules.all_text_contents()]
+
         single_owner = item_text("single-owner")
         normalized_single_owner = contract_text(single_owner)
         for positive_rule in (
@@ -131,28 +137,31 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
         ):
             self.assertNotIn(contract_text(rejected_rule), normalized_single_owner)
 
-        planning_boundary = item_text("planning-boundary")
-        self.assertIn(
-            "规格和 Tickets 完成后，才能运行 writing-plans",
-            planning_boundary,
+        self.assertCountEqual(
+            structured_rules("planning-boundary", "data-planning-rule"),
+            (
+                "规格和 Tickets 完成后，才能运行 writing-plans",
+                "writing-plans 只服务一个 Ticket",
+                "to-tickets 把已批准规格切成纵向 Tickets，"
+                "writing-plans 只为其中单个 Ticket 生成技术计划",
+            ),
         )
-        for pattern in (
-            r"writing-plans.*只.*一个.*Ticket",
-            r"to-tickets.*纵向.*Tickets.*writing-plans.*单个",
-        ):
-            self.assertRegex(planning_boundary, pattern)
 
-        bounded_execution = item_text("bounded-execution")
-        for pattern in (
-            r"一个.*Ticket.*批准.*计划.*按序",
-            r"独立.*新实现者",
-            r"RED.*GREEN.*REFACTOR.*规格审查.*质量审查.*code-review",
-            r"规格审查.*未通过.*修复.*重复.*通过.*质量审查.*未通过.*修复.*重复.*通过",
-            r"完成.*交还.*Router",
-            r"不得.*直接.*verification-before-completion.*finishing-a-development-branch",
-            r"禁止.*完整.*subagent-driven-development.*executing-plans",
-        ):
-            self.assertRegex(bounded_execution, pattern)
+        self.assertCountEqual(
+            structured_rules("bounded-execution", "data-execution-rule"),
+            (
+                "一个已选 Ticket 只有在计划批准后才能按序执行",
+                "每个任务由独立的新实现者负责",
+                "每个任务必须依次经过 RED、GREEN、REFACTOR、规格审查、"
+                "质量审查和 code-review",
+                "规格审查未通过时必须修复并重复审查直至通过；"
+                "之后质量审查未通过时必须修复并重复审查直至通过",
+                "所有任务完成后必须交还 Router",
+                "不得直接进入 verification-before-completion 或 "
+                "finishing-a-development-branch",
+                "禁止调用完整的 subagent-driven-development 或 executing-plans",
+            ),
+        )
 
         debugging = item_text("debugging")
         self.assertIn(
