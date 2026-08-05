@@ -89,18 +89,69 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
             "xpath=ancestor::*[@data-command-block][1]"
         ).locator("[data-copy-status][aria-live]")
 
-    def _wait_for_copy_feedback_idle(self, page, status):
-        status_handle = status.element_handle()
-        self.assertIsNotNone(status_handle)
-        page.wait_for_function(
+    def _copy_control_contract(self, control):
+        return control.evaluate(
             """
             element => {
-              const text = element.textContent.trim();
-              return !text.includes("已复制") && !text.includes("复制失败");
+              const stableVisibleLabel = button => {
+                const clone = button.cloneNode(true);
+                clone.querySelectorAll("svg, [aria-hidden='true']")
+                  .forEach(node => node.remove());
+                return clone.textContent.replace(/\\s+/g, " ").trim();
+              };
+              const labelledBy = element.getAttribute("aria-labelledby");
+              const accessibleLabel = labelledBy
+                ? labelledBy.split(/\\s+/)
+                  .map(id => document.getElementById(id)?.textContent ?? "")
+                  .join(" ").replace(/\\s+/g, " ").trim()
+                : (element.getAttribute("aria-label")
+                  || stableVisibleLabel(element)).trim();
+              const status = element.closest("[data-command-block]")
+                ?.querySelector("[data-copy-status][aria-live]");
+              return {
+                visibleLabel: stableVisibleLabel(element),
+                accessibleLabel,
+                statusText: (status?.textContent ?? "")
+                  .replace(/\\s+/g, " ").trim(),
+              };
+            }
+            """
+        )
+
+    def _wait_for_copy_feedback_reset(self, page, control, expected_contract):
+        control_handle = control.element_handle()
+        self.assertIsNotNone(control_handle)
+        page.wait_for_function(
+            """
+            ({element, expected}) => {
+              const stableVisibleLabel = button => {
+                const clone = button.cloneNode(true);
+                clone.querySelectorAll("svg, [aria-hidden='true']")
+                  .forEach(node => node.remove());
+                return clone.textContent.replace(/\\s+/g, " ").trim();
+              };
+              const labelledBy = element.getAttribute("aria-labelledby");
+              const accessibleLabel = labelledBy
+                ? labelledBy.split(/\\s+/)
+                  .map(id => document.getElementById(id)?.textContent ?? "")
+                  .join(" ").replace(/\\s+/g, " ").trim()
+                : (element.getAttribute("aria-label")
+                  || stableVisibleLabel(element)).trim();
+              const status = element.closest("[data-command-block]")
+                ?.querySelector("[data-copy-status][aria-live]");
+              const statusText = (status?.textContent ?? "")
+                .replace(/\\s+/g, " ").trim();
+              return stableVisibleLabel(element) === expected.visibleLabel
+                && accessibleLabel === expected.accessibleLabel
+                && statusText === expected.statusText;
             }
             """,
-            arg=status_handle,
+            arg={"element": control_handle, "expected": expected_contract},
             timeout=3_000,
+        )
+        self.assertEqual(
+            self._copy_control_contract(control),
+            expected_contract,
         )
 
     def _assert_narrow_release_content_fits(self, page):
@@ -319,25 +370,17 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
             ),
             self.COMMANDS,
         )
+        pointer_initial_contracts = [
+            self._copy_control_contract(controls.nth(index))
+            for index in range(controls.count())
+        ]
 
         for index, expected_command in enumerate(self.COMMANDS):
             with self.subTest(command=expected_command):
                 control = controls.nth(index)
-                accessible_name = control.evaluate(
-                    """
-                    element => {
-                      const labelledBy = element.getAttribute("aria-labelledby");
-                      if (labelledBy) {
-                        return labelledBy.split(/\\s+/)
-                          .map(id => document.getElementById(id)?.textContent ?? "")
-                          .join(" ").trim();
-                      }
-                      return (element.getAttribute("aria-label")
-                        || element.textContent).trim();
-                    }
-                    """
-                )
-                self.assertTrue(accessible_name)
+                initial_contract = pointer_initial_contracts[index]
+                self.assertTrue(initial_contract["visibleLabel"])
+                self.assertTrue(initial_contract["accessibleLabel"])
                 block = control.locator("xpath=ancestor::*[@data-command-block][1]")
                 self.assertEqual(
                     block.count(),
@@ -369,15 +412,20 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
                     expected_command,
                 )
         for control_index in range(controls.count()):
-            self._wait_for_copy_feedback_idle(
+            self._wait_for_copy_feedback_reset(
                 page,
-                self._copy_status_for(controls.nth(control_index)),
+                controls.nth(control_index),
+                pointer_initial_contracts[control_index],
             )
 
         page.reload(wait_until="networkidle", timeout=5_000)
         controls = page.locator(
             "#install button[type='button'][data-copy-command]"
         )
+        keyboard_initial_contracts = [
+            self._copy_control_contract(controls.nth(index))
+            for index in range(controls.count())
+        ]
         reached_commands = []
         maximum_tab_stops = page.locator(
             "a[href], button:not([disabled]), "
@@ -396,6 +444,9 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
             )
             reached_commands.append(active_command)
             active_control = controls.nth(len(reached_commands) - 1)
+            active_initial_contract = keyboard_initial_contracts[
+                len(reached_commands) - 1
+            ]
             self.assertTrue(active_control.evaluate("el => el === document.activeElement"))
             status = self._copy_status_for(active_control)
 
@@ -413,7 +464,11 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
                     page.evaluate("navigator.clipboard.readText()"),
                     active_command,
                 )
-                self._wait_for_copy_feedback_idle(page, status)
+                self._wait_for_copy_feedback_reset(
+                    page,
+                    active_control,
+                    active_initial_contract,
+                )
             if len(reached_commands) == len(self.COMMANDS):
                 break
         self.assertEqual(reached_commands, self.COMMANDS)
@@ -446,6 +501,10 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
             "#install button[type='button'][data-copy-command]"
         )
         self.assertEqual(fallback_controls.count(), len(self.COMMANDS))
+        fallback_initial_contracts = [
+            self._copy_control_contract(fallback_controls.nth(index))
+            for index in range(fallback_controls.count())
+        ]
         for index, expected_command in enumerate(self.COMMANDS):
             with self.subTest(fallback_command=expected_command):
                 control = fallback_controls.nth(index)
@@ -461,9 +520,10 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
                     expected_command,
                 )
         for control_index in range(fallback_controls.count()):
-            self._wait_for_copy_feedback_idle(
+            self._wait_for_copy_feedback_reset(
                 page,
-                self._copy_status_for(fallback_controls.nth(control_index)),
+                fallback_controls.nth(control_index),
+                fallback_initial_contracts[control_index],
             )
 
         page.reload(wait_until="networkidle", timeout=5_000)
@@ -495,6 +555,9 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
         rejected_api_control = page.locator(
             "#install button[type='button'][data-copy-command]"
         ).last
+        rejected_api_initial_contract = self._copy_control_contract(
+            rejected_api_control
+        )
         rejected_api_status = self._copy_status_for(rejected_api_control)
         rejected_api_control.click()
         expect(rejected_api_status).to_contain_text("已复制", timeout=700)
@@ -508,7 +571,11 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
             page.evaluate("window.__fallbackCopySelections.at(-1)"),
             self.COMMANDS[-1],
         )
-        self._wait_for_copy_feedback_idle(page, rejected_api_status)
+        self._wait_for_copy_feedback_reset(
+            page,
+            rejected_api_control,
+            rejected_api_initial_contract,
+        )
 
         page.reload(wait_until="networkidle", timeout=5_000)
         page.evaluate("navigator.clipboard.writeText('sentinel')")
@@ -528,6 +595,9 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
         rejected_control = page.locator(
             "#install button[type='button'][data-copy-command]"
         ).first
+        rejected_initial_contract = self._copy_control_contract(
+            rejected_control
+        )
         rejected_status = self._copy_status_for(rejected_control)
         rejected_control.click()
         expect(rejected_status).to_contain_text("复制失败", timeout=700)
@@ -542,7 +612,11 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
             page.evaluate("navigator.clipboard.readText()"),
             "sentinel",
         )
-        self._wait_for_copy_feedback_idle(page, rejected_status)
+        self._wait_for_copy_feedback_reset(
+            page,
+            rejected_control,
+            rejected_initial_contract,
+        )
 
     def test_commands_remain_readable_and_selectable_without_javascript(self):
         page = self.open_page(
