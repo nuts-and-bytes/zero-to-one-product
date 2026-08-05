@@ -1061,6 +1061,19 @@ code {
   transform: scale(0.98);
 }
 
+[data-copy-command],
+[data-copy-status] {
+  display: none;
+}
+
+.js [data-copy-command] {
+  display: block;
+}
+
+.js [data-copy-status] {
+  display: block;
+}
+
 .command-block[data-copy-state="success"] button {
   background: var(--cobalt);
 }
@@ -1071,10 +1084,11 @@ code {
 
 .copy-status {
   grid-column: 1 / -1;
-  min-height: 0;
+  min-height: 1.2rem;
   color: var(--cobalt);
   font-size: 0.72rem;
   font-weight: 650;
+  line-height: 1.2rem;
 }
 
 .command-block[data-copy-state="error"] .copy-status {

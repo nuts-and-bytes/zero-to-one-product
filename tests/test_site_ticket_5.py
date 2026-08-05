@@ -618,6 +618,180 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
             rejected_initial_contract,
         )
 
+    def test_copy_fallback_restores_selection_and_contains_exec_errors(self):
+        page = self.open_page(reduced_motion="reduce")
+        page_errors = []
+        page.on("pageerror", lambda error: page_errors.append(str(error)))
+        original_selection = page.evaluate(
+            """
+            () => {
+              const textNode = document.querySelector(".hero-copy h1").firstChild;
+              const range = document.createRange();
+              range.setStart(textNode, 0);
+              range.setEnd(textNode, 4);
+              const selection = window.getSelection();
+              selection.removeAllRanges();
+              selection.addRange(range);
+              window.__selectionContract = () => {
+                const current = window.getSelection();
+                return {
+                  count: current.rangeCount,
+                  text: current.toString(),
+                  ranges: Array.from(
+                    {length: current.rangeCount},
+                    (_, index) => {
+                      const item = current.getRangeAt(index);
+                      return {
+                        startText: item.startContainer.nodeValue,
+                        startOffset: item.startOffset,
+                        endText: item.endContainer.nodeValue,
+                        endOffset: item.endOffset,
+                      };
+                    }
+                  ),
+                };
+              };
+              return window.__selectionContract();
+            }
+            """
+        )
+        page.evaluate(
+            """
+            () => {
+              Object.defineProperty(navigator, "clipboard", {
+                configurable: true,
+                value: undefined,
+              });
+              document.execCommand = command => command === "copy";
+            }
+            """
+        )
+        control = page.locator(
+            "#install button[type='button'][data-copy-command]"
+        ).first
+        initial_contract = self._copy_control_contract(control)
+        status = self._copy_status_for(control)
+
+        control.click()
+        expect(status).to_contain_text("已复制", timeout=700)
+        self.assertEqual(
+            page.evaluate("window.__selectionContract()"),
+            original_selection,
+        )
+        self._wait_for_copy_feedback_reset(
+            page,
+            control,
+            initial_contract,
+        )
+
+        page.evaluate(
+            """
+            () => {
+              document.execCommand = () => {
+                throw new Error("copy command exploded");
+              };
+            }
+            """
+        )
+        control.click()
+        expect(status).to_contain_text("复制失败", timeout=700)
+        expect(status).to_be_visible(timeout=700)
+        self.assertEqual(
+            page.evaluate("window.__selectionContract()"),
+            original_selection,
+        )
+        self.assertEqual(page_errors, [])
+        self._wait_for_copy_feedback_reset(
+            page,
+            control,
+            initial_contract,
+        )
+
+    def test_latest_copy_operation_owns_feedback_and_reset_timer(self):
+        page = self.open_page(reduced_motion="reduce")
+        page.evaluate(
+            """
+            () => {
+              window.__copyDeferred = [];
+              Object.defineProperty(navigator.clipboard, "writeText", {
+                configurable: true,
+                value: command => new Promise((resolve, reject) => {
+                  window.__copyDeferred.push({command, resolve, reject});
+                }),
+              });
+              document.execCommand = () => false;
+            }
+            """
+        )
+        control = page.locator(
+            "#install button[type='button'][data-copy-command]"
+        ).first
+        initial_contract = self._copy_control_contract(control)
+        status = self._copy_status_for(control)
+
+        control.click()
+        control.click()
+        page.wait_for_function("window.__copyDeferred.length === 2", timeout=700)
+        page.evaluate(
+            "window.__copyDeferred[1].reject("
+            "new DOMException('latest denied', 'NotAllowedError'))"
+        )
+        expect(status).to_contain_text("复制失败", timeout=700)
+        latest_failure_contract = self._copy_control_contract(control)
+        self.assertIn("复制失败", latest_failure_contract["visibleLabel"])
+        self.assertIn("复制失败", latest_failure_contract["accessibleLabel"])
+        self.assertIn("复制失败", latest_failure_contract["statusText"])
+
+        page.evaluate("window.__copyDeferred[0].resolve()")
+        page.wait_for_timeout(100)
+        self.assertEqual(
+            self._copy_control_contract(control),
+            latest_failure_contract,
+            "An older completion must not overwrite the latest failure",
+        )
+
+        page.wait_for_timeout(900)
+        control.click()
+        page.wait_for_function("window.__copyDeferred.length === 3", timeout=700)
+        page.evaluate("window.__copyDeferred[2].resolve()")
+        expect(status).to_contain_text("已复制", timeout=700)
+        latest_success_contract = self._copy_control_contract(control)
+        self.assertIn("已复制", latest_success_contract["visibleLabel"])
+
+        page.wait_for_timeout(800)
+        self.assertEqual(
+            self._copy_control_contract(control),
+            latest_success_contract,
+            "A retry must cancel the previous operation's reset timer",
+        )
+        self._wait_for_copy_feedback_reset(
+            page,
+            control,
+            initial_contract,
+        )
+
+    def test_internal_navigation_cleans_only_temporary_target_tabindex(self):
+        page = self.open_page(reduced_motion="reduce")
+
+        target = page.locator("#value")
+        self.assertIsNone(target.get_attribute("tabindex"))
+        page.locator("#primary-navigation a[href='#value']").click()
+        self.assertTrue(target.evaluate("element => element === document.activeElement"))
+        self.assertEqual(target.get_attribute("tabindex"), "-1")
+        page.evaluate("document.activeElement.blur()")
+        expect(target).not_to_have_attribute("tabindex", "-1")
+        self.assertIsNone(target.get_attribute("tabindex"))
+
+        existing_target = page.locator("#classifier")
+        existing_target.evaluate("element => element.setAttribute('tabindex', '0')")
+        page.locator("#primary-navigation a[href='#classifier']").click()
+        self.assertTrue(
+            existing_target.evaluate("element => element === document.activeElement")
+        )
+        self.assertEqual(existing_target.get_attribute("tabindex"), "0")
+        page.evaluate("document.activeElement.blur()")
+        self.assertEqual(existing_target.get_attribute("tabindex"), "0")
+
     def test_commands_remain_readable_and_selectable_without_javascript(self):
         page = self.open_page(
             reduced_motion="reduce",
@@ -652,6 +826,49 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
             self.assertGreater(item["height"], 0)
             self.assertNotEqual(item["userSelect"], "none")
 
+        copy_controls = install.locator("[data-copy-command]")
+        copy_statuses = install.locator("[data-copy-status][aria-live]")
+        self.assertEqual(copy_controls.count(), len(self.COMMANDS))
+        self.assertEqual(copy_statuses.count(), len(self.COMMANDS))
+        self.assertTrue(
+            copy_controls.evaluate_all(
+                "elements => elements.every(element => "
+                "!element.checkVisibility())"
+            )
+        )
+        self.assertTrue(
+            copy_statuses.evaluate_all(
+                "elements => elements.every(element => "
+                "!element.checkVisibility())"
+            )
+        )
+        reached_copy_control = False
+        for _tab_stop in range(
+            page.locator("a[href], button, [tabindex]").count() + 2
+        ):
+            page.keyboard.press("Tab")
+            reached_copy_control = reached_copy_control or page.evaluate(
+                "Boolean(document.activeElement?.dataset.copyCommand)"
+            )
+        self.assertFalse(reached_copy_control)
+
+        self.browser_context.close()
+        del self.browser_context
+        enhanced_page = self.open_page(reduced_motion="reduce")
+        enhanced_install = self._required_section(enhanced_page, "install")
+        self.assertEqual(
+            enhanced_install.locator("[data-copy-command]:visible").count(),
+            len(self.COMMANDS),
+        )
+        self.assertTrue(
+            enhanced_install.locator(
+                "[data-copy-status][aria-live]"
+            ).evaluate_all(
+                "elements => elements.every(element => "
+                "element.checkVisibility())"
+            )
+        )
+
     def test_release_metadata_share_image_and_pages_files_are_http_ready(self):
         page = self.open_page(reduced_motion="reduce")
 
@@ -669,11 +886,17 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
             "meta[property='og:type']": "website",
             "meta[property='og:url']": self.CANONICAL_URL,
             "meta[property='og:image']": self.SHARE_IMAGE_URL,
+            "meta[property='og:image:alt']": (
+                "Zero-to-One Product 固定十三阶段路线与三方职责示意"
+            ),
             "meta[property='og:locale']": "zh_CN",
             "meta[name='twitter:card']": "summary_large_image",
             "meta[name='twitter:title']": self.PAGE_TITLE,
             "meta[name='twitter:description']": self.DESCRIPTION,
             "meta[name='twitter:image']": self.SHARE_IMAGE_URL,
+            "meta[name='twitter:image:alt']": (
+                "Zero-to-One Product 固定十三阶段路线与三方职责示意"
+            ),
         }
         for selector, expected_content in expected_metadata.items():
             with self.subTest(selector=selector):

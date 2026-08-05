@@ -28,7 +28,17 @@
         var targetId = decodeURIComponent(link.getAttribute("href").slice(1));
         var target = document.getElementById(targetId);
         if (target) {
-          target.setAttribute("tabindex", "-1");
+          var hasExistingTabindex = target.hasAttribute("tabindex");
+          if (!hasExistingTabindex) {
+            target.setAttribute("tabindex", "-1");
+            target.addEventListener(
+              "blur",
+              function removeTemporaryTabindex() {
+                target.removeAttribute("tabindex");
+              },
+              { once: true }
+            );
+          }
           target.focus({ preventScroll: true });
         }
       });
@@ -76,15 +86,29 @@
     }
 
     var selection = window.getSelection();
+    if (!selection) {
+      return false;
+    }
+    var savedRanges = [];
+    for (var rangeIndex = 0; rangeIndex < selection.rangeCount; rangeIndex += 1) {
+      savedRanges.push(selection.getRangeAt(rangeIndex).cloneRange());
+    }
     var range = document.createRange();
     range.selectNodeContents(codeElement);
-    selection.removeAllRanges();
-    selection.addRange(range);
 
     try {
-      return document.execCommand("copy");
+      selection.removeAllRanges();
+      selection.addRange(range);
+      try {
+        return Boolean(document.execCommand("copy"));
+      } catch (_error) {
+        return false;
+      }
     } finally {
       selection.removeAllRanges();
+      savedRanges.forEach(function (savedRange) {
+        selection.addRange(savedRange);
+      });
     }
   }
 
@@ -114,13 +138,19 @@
     var idleAccessibleLabel = button.getAttribute("aria-label");
     var idleStatus = status ? status.textContent : "";
     var resetTimer;
+    var operationId = 0;
 
     button.addEventListener("click", function () {
       var command = button.dataset.copyCommand;
+      operationId += 1;
+      var currentOperationId = operationId;
       button.focus({ preventScroll: true });
       window.clearTimeout(resetTimer);
 
       copyCommand(command, codeElement).then(function (copied) {
+        if (currentOperationId !== operationId) {
+          return;
+        }
         var feedback = copied ? "已复制" : "复制失败";
         block.dataset.copyState = copied ? "success" : "error";
         if (label) {
@@ -135,6 +165,9 @@
         }
 
         resetTimer = window.setTimeout(function () {
+          if (currentOperationId !== operationId) {
+            return;
+          }
           delete block.dataset.copyState;
           if (label) {
             label.textContent = idleVisibleLabel;
