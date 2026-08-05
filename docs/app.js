@@ -25,6 +25,12 @@
     navigation.querySelectorAll('a[href^="#"]').forEach(function (link) {
       link.addEventListener("click", function () {
         setMenuOpen(false);
+        var targetId = decodeURIComponent(link.getAttribute("href").slice(1));
+        var target = document.getElementById(targetId);
+        if (target) {
+          target.setAttribute("tabindex", "-1");
+          target.focus({ preventScroll: true });
+        }
       });
     });
 
@@ -62,6 +68,90 @@
     });
   }
 
+  var copyButtons = Array.from(document.querySelectorAll("button[data-copy-command]"));
+
+  function copyWithSelection(codeElement) {
+    if (!codeElement || typeof document.execCommand !== "function") {
+      return false;
+    }
+
+    var selection = window.getSelection();
+    var range = document.createRange();
+    range.selectNodeContents(codeElement);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    try {
+      return document.execCommand("copy");
+    } finally {
+      selection.removeAllRanges();
+    }
+  }
+
+  function copyCommand(command, codeElement) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      return Promise.resolve()
+        .then(function () {
+          return navigator.clipboard.writeText(command);
+        })
+        .then(function () {
+          return true;
+        })
+        .catch(function () {
+          return copyWithSelection(codeElement);
+        });
+    }
+
+    return Promise.resolve(copyWithSelection(codeElement));
+  }
+
+  copyButtons.forEach(function (button) {
+    var block = button.closest("[data-command-block]");
+    var codeElement = block && block.querySelector("code[data-command]");
+    var status = block && block.querySelector("[data-copy-status][aria-live]");
+    var label = button.querySelector("[data-copy-label]");
+    var idleVisibleLabel = label ? label.textContent : button.textContent;
+    var idleAccessibleLabel = button.getAttribute("aria-label");
+    var idleStatus = status ? status.textContent : "";
+    var resetTimer;
+
+    button.addEventListener("click", function () {
+      var command = button.dataset.copyCommand;
+      button.focus({ preventScroll: true });
+      window.clearTimeout(resetTimer);
+
+      copyCommand(command, codeElement).then(function (copied) {
+        var feedback = copied ? "已复制" : "复制失败";
+        block.dataset.copyState = copied ? "success" : "error";
+        if (label) {
+          label.textContent = feedback;
+        }
+        button.setAttribute(
+          "aria-label",
+          (idleAccessibleLabel || idleVisibleLabel) + "，" + feedback
+        );
+        if (status) {
+          status.textContent = copied ? "已复制到剪贴板" : "复制失败，请手动选择命令";
+        }
+
+        resetTimer = window.setTimeout(function () {
+          delete block.dataset.copyState;
+          if (label) {
+            label.textContent = idleVisibleLabel;
+          }
+          if (idleAccessibleLabel === null) {
+            button.removeAttribute("aria-label");
+          } else {
+            button.setAttribute("aria-label", idleAccessibleLabel);
+          }
+          if (status) {
+            status.textContent = idleStatus;
+          }
+        }, 1600);
+      });
+    });
+  });
+
   var revealElements = Array.from(document.querySelectorAll("[data-reveal]"));
   var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -73,22 +163,21 @@
 
   if (reduceMotion || !("IntersectionObserver" in window)) {
     showImmediately();
-    return;
+  } else {
+    var observer = new IntersectionObserver(
+      function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { rootMargin: "0px 0px -8%", threshold: 0.12 }
+    );
+
+    revealElements.forEach(function (element) {
+      observer.observe(element);
+    });
   }
-
-  var observer = new IntersectionObserver(
-    function (entries) {
-      entries.forEach(function (entry) {
-        if (entry.isIntersecting) {
-          entry.target.classList.add("is-visible");
-          observer.unobserve(entry.target);
-        }
-      });
-    },
-    { rootMargin: "0px 0px -8%", threshold: 0.12 }
-  );
-
-  revealElements.forEach(function (element) {
-    observer.observe(element);
-  });
 })();

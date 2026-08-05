@@ -3,8 +3,21 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Zero-to-One Product 是连接 Matt Pocock Skills 与 Superpowers 的有状态路由器。">
-    <title>Zero-to-One Product｜有状态路由器</title>
+    <meta name="description" content="Zero-to-One Product 把 Matt Pocock Skills 的产品发现与 Superpowers 的工程交付组合成一条固定、可恢复、有安全门的 0→1 产品路线。">
+    <link rel="canonical" href="https://nuts-and-bytes.github.io/zero-to-one-product/">
+    <meta property="og:title" content="Zero-to-One Product｜从模糊想法到首个可用版本">
+    <meta property="og:description" content="Zero-to-One Product 把 Matt Pocock Skills 的产品发现与 Superpowers 的工程交付组合成一条固定、可恢复、有安全门的 0→1 产品路线。">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://nuts-and-bytes.github.io/zero-to-one-product/">
+    <meta property="og:image" content="https://nuts-and-bytes.github.io/zero-to-one-product/assets/share-card.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:locale" content="zh_CN">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Zero-to-One Product｜从模糊想法到首个可用版本">
+    <meta name="twitter:description" content="Zero-to-One Product 把 Matt Pocock Skills 的产品发现与 Superpowers 的工程交付组合成一条固定、可恢复、有安全门的 0→1 产品路线。">
+    <meta name="twitter:image" content="https://nuts-and-bytes.github.io/zero-to-one-product/assets/share-card.png">
+    <title>Zero-to-One Product｜从模糊想法到首个可用版本</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='32' fill='%2320201e'/%3E%3Cpath d='M19 32h26M32 19v26' stroke='%23fbf8f1' stroke-width='4'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="styles.css">
     <script src="app.js" defer></script>
@@ -38,8 +51,8 @@
         <a href="#workflow">完整路线</a>
         <a href="#ownership">职责地图</a>
         <a href="#guardrails">安全边界</a>
-        <a href="#scope-transfer">范围移交</a>
-        <a class="nav-source" href="https://github.com/nuts-and-bytes/zero-to-one-product">GitHub</a>
+        <a href="#dependencies">依赖</a>
+        <a href="#install">安装</a>
       </nav>
     </header>
 
@@ -358,6 +371,154 @@
             </div>
           </article>
         </div>
+      </section>
+
+      <section class="dependencies section page-shell" id="dependencies" aria-labelledby="dependencies-title">
+        <div class="dependencies-heading" data-reveal>
+          <div class="section-heading compact">
+            <p class="eyebrow"><span aria-hidden="true"></span> 精确依赖地图</p>
+            <h2 id="dependencies-title">17 个上游能力，<br>各自安装、各自更新。</h2>
+          </div>
+          <p>
+            路由器不捆绑 Matt Pocock Skills，也不捆绑 Superpowers。它只保存状态、判断阶段并调用下面这些精确名称；两个上游项目仍由原作者独立维护。
+          </p>
+        </div>
+
+        <div class="dependency-ledger" data-reveal>
+          <article class="dependency-group dependency-matt" data-dependency-owner="matt">
+            <div class="dependency-owner">
+              <p class="dependency-index">01 / PRODUCT FORMATION</p>
+              <h3>Matt Pocock Skills</h3>
+              <p>负责追问、研究、原型、规格与整票审查。</p>
+              <a href="https://github.com/mattpocock/skills">查看 Matt 上游源码</a>
+            </div>
+            <ul class="skill-ledger" aria-label="Matt Pocock Skills 精确依赖">
+              <li data-skill="grill-me">grill-me</li>
+              <li data-skill="grill-with-docs">grill-with-docs</li>
+              <li data-skill="wayfinder">wayfinder</li>
+              <li data-skill="research">research</li>
+              <li data-skill="prototype">prototype</li>
+              <li data-skill="to-spec">to-spec</li>
+              <li data-skill="to-tickets">to-tickets</li>
+              <li data-skill="diagnosing-bugs">diagnosing-bugs</li>
+              <li data-skill="code-review">code-review</li>
+              <li data-skill="handoff">handoff</li>
+            </ul>
+          </article>
+
+          <article class="dependency-group dependency-superpowers" data-dependency-owner="superpowers">
+            <div class="dependency-owner">
+              <p class="dependency-index">02 / ENGINEERING DELIVERY</p>
+              <h3>Superpowers</h3>
+              <p>负责工作区、单票计划、TDD、审查证据与分支收尾。</p>
+              <a href="https://github.com/obra/superpowers">查看 Superpowers 上游源码</a>
+            </div>
+            <ul class="skill-ledger" aria-label="Superpowers 精确依赖">
+              <li data-skill="using-git-worktrees">using-git-worktrees</li>
+              <li data-skill="writing-plans">writing-plans</li>
+              <li data-skill="test-driven-development">test-driven-development</li>
+              <li data-skill="systematic-debugging">systematic-debugging</li>
+              <li data-skill="requesting-code-review">requesting-code-review</li>
+              <li data-skill="verification-before-completion">verification-before-completion</li>
+              <li data-skill="finishing-a-development-branch">finishing-a-development-branch</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="install section page-shell" id="install" aria-labelledby="install-title">
+        <div class="install-heading" data-reveal>
+          <div class="section-heading compact">
+            <p class="eyebrow"><span aria-hidden="true"></span> 安装、更新与使用</p>
+            <h2 id="install-title">按顺序接通三层，<br>再开始 0→1。</h2>
+          </div>
+          <p>先安装 Matt Pocock Skills，再通过 Codex 的插件界面启用 Superpowers，最后接入 Zero-to-One Product。命令都是普通文本，禁用 JavaScript 仍可选择复制。</p>
+        </div>
+
+        <ol class="install-sequence" data-reveal>
+          <li data-install-phase="matt">
+            <div class="install-step"><span>01</span><p>上游产品能力</p></div>
+            <div class="install-content">
+              <h3>安装 Matt Pocock Skills</h3>
+              <p>从原作者仓库安装产品发现能力。来源：<a href="https://github.com/mattpocock/skills">mattpocock/skills</a>。</p>
+              <div class="command-block" data-command-block>
+                <code data-command>npx skills@latest add mattpocock/skills</code>
+                <button type="button" data-copy-command="npx skills@latest add mattpocock/skills" aria-label="复制 Matt Pocock Skills 安装命令"><span data-copy-label>复制</span></button>
+                <span class="copy-status" data-copy-status aria-live="polite"></span>
+              </div>
+            </div>
+          </li>
+
+          <li data-install-phase="superpowers">
+            <div class="install-step"><span>02</span><p>上游工程能力</p></div>
+            <div class="install-content">
+              <h3>启用 Superpowers</h3>
+              <p>在 Codex 输入下面的 slash 命令，打开插件面板并安装 Superpowers。来源：<a href="https://github.com/obra/superpowers">obra/superpowers</a>。</p>
+              <div class="command-block" data-command-block>
+                <code data-command>/plugins</code>
+                <button type="button" data-copy-command="/plugins" aria-label="复制 Superpowers 插件命令"><span data-copy-label>复制</span></button>
+                <span class="copy-status" data-copy-status aria-live="polite"></span>
+              </div>
+            </div>
+          </li>
+
+          <li data-install-phase="router">
+            <div class="install-step"><span>03</span><p>组合路由器</p></div>
+            <div class="install-content">
+              <h3>安装 Zero-to-One Product</h3>
+              <p>先添加插件市场，再安装路由器。源码与中文说明位于 <a href="https://github.com/nuts-and-bytes/zero-to-one-product">nuts-and-bytes/zero-to-one-product</a>。</p>
+              <div class="command-block" data-command-block>
+                <code data-command>codex plugin marketplace add nuts-and-bytes/zero-to-one-product</code>
+                <button type="button" data-copy-command="codex plugin marketplace add nuts-and-bytes/zero-to-one-product" aria-label="复制插件市场添加命令"><span data-copy-label>复制</span></button>
+                <span class="copy-status" data-copy-status aria-live="polite"></span>
+              </div>
+              <div class="command-block" data-command-block>
+                <code data-command>codex plugin add zero-to-one-product@zero-to-one-product</code>
+                <button type="button" data-copy-command="codex plugin add zero-to-one-product@zero-to-one-product" aria-label="复制路由器安装命令"><span data-copy-label>复制</span></button>
+                <span class="copy-status" data-copy-status aria-live="polite"></span>
+              </div>
+            </div>
+          </li>
+
+          <li data-install-phase="update">
+            <div class="install-step"><span>04</span><p>保持同步</p></div>
+            <div class="install-content">
+              <h3>更新组合路由器</h3>
+              <p data-install-rule>Matt Pocock Skills 与 Superpowers 必须分别通过各自上游安装方式更新</p>
+              <div class="command-block" data-command-block>
+                <code data-command>codex plugin marketplace upgrade zero-to-one-product</code>
+                <button type="button" data-copy-command="codex plugin marketplace upgrade zero-to-one-product" aria-label="复制路由器更新命令"><span data-copy-label>复制</span></button>
+                <span class="copy-status" data-copy-status aria-live="polite"></span>
+              </div>
+            </div>
+          </li>
+
+          <li data-install-phase="use">
+            <div class="install-step"><span>05</span><p>开始使用</p></div>
+            <div class="install-content">
+              <h3>在新会话显式调用</h3>
+              <p data-install-rule>安装或更新后必须新建一个 Codex 对话</p>
+              <p data-install-rule>显式调用 $zero-to-one-product 比隐式触发更可靠</p>
+              <div class="command-block" data-command-block>
+                <code data-command>$zero-to-one-product &lt;你的产品想法或当前 0→1 目标&gt;</code>
+                <button type="button" data-copy-command="$zero-to-one-product &lt;你的产品想法或当前 0→1 目标&gt;" aria-label="复制 Zero-to-One Product 调用命令"><span data-copy-label>复制</span></button>
+                <span class="copy-status" data-copy-status aria-live="polite"></span>
+              </div>
+            </div>
+          </li>
+
+          <li data-install-phase="troubleshoot">
+            <div class="install-step"><span>06</span><p>遇到问题时</p></div>
+            <div class="install-content">
+              <h3>停止、报告，不猜路径</h3>
+              <div class="troubleshooting-rules">
+                <p data-install-rule>依赖缺失或存在歧义时必须停止</p>
+                <p data-install-rule>必须报告精确的 Skill 名称</p>
+                <p data-install-rule>禁止猜测机器相关路径</p>
+              </div>
+            </div>
+          </li>
+        </ol>
       </section>
 
       <section class="scope-transfer section page-shell" id="scope-transfer" aria-labelledby="scope-title">
