@@ -445,6 +445,46 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
                 self.assertGreater(section_state["width"], 0)
                 self.assertGreater(section_state["height"], 0)
 
+    def test_footer_long_chinese_copy_remains_readable(self):
+        for width, height in ((1280, 720), (390, 844)):
+            with self.subTest(width=width):
+                page = self.open_page(width=width, height=height)
+                try:
+                    footer_copy = page.locator(".site-footer p")
+                    self.assertEqual(footer_copy.count(), 1)
+                    footer_copy.scroll_into_view_if_needed()
+                    contract = footer_copy.evaluate(
+                        """
+                        element => {
+                          const style = getComputedStyle(element);
+                          const rect = element.getBoundingClientRect();
+                          return {
+                            text: element.textContent.trim(),
+                            visible: element.checkVisibility({
+                              checkOpacity: true,
+                              checkVisibilityCSS: true,
+                            }),
+                            fontSize: Number.parseFloat(style.fontSize),
+                            lineHeight: Number.parseFloat(style.lineHeight),
+                            width: rect.width,
+                            height: rect.height,
+                          };
+                        }
+                        """
+                    )
+                    self.assertIn("从产品问题到首个可用版本", contract["text"])
+                    self.assertTrue(contract["visible"])
+                    self.assertGreater(contract["width"], 0)
+                    self.assertGreater(contract["height"], 0)
+                    self.assertGreaterEqual(contract["fontSize"], 13)
+                    self.assertGreaterEqual(
+                        contract["lineHeight"] / contract["fontSize"],
+                        1.5,
+                    )
+                finally:
+                    self.browser_context.close()
+                    del self.browser_context
+
     def test_tablet_navigation_keeps_every_link_on_one_line(self):
         page = self.open_page(width=768, height=1024)
 
