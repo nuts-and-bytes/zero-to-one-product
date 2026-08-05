@@ -152,11 +152,10 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
             (
                 "一个已选 Ticket 只有在计划批准后才能按序执行",
                 "每个任务由独立的新实现者负责",
-                "每个任务必须依次经过 RED、GREEN、REFACTOR、规格审查、"
-                "质量审查和 code-review",
+                "每个任务必须依次经过 RED、GREEN、REFACTOR、规格审查和质量审查",
                 "规格审查未通过时必须修复并重复审查直至通过；"
                 "之后质量审查未通过时必须修复并重复审查直至通过",
-                "所有任务完成后必须交还 Router",
+                "所有任务完成后必须交还 Router，再由 Matt 执行整票 code-review",
                 "不得直接进入 verification-before-completion 或 "
                 "finishing-a-development-branch",
                 "禁止调用完整的 subagent-driven-development 或 executing-plans",
