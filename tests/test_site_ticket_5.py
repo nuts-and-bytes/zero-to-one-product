@@ -71,6 +71,7 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
         "$zero-to-one-product <你的产品想法或当前 0→1 目标>",
     ]
     INSTALL_RULES = {
+        "Matt Pocock Skills 与 Superpowers 必须分别通过各自上游安装方式更新",
         "安装或更新后必须新建一个 Codex 对话",
         "显式调用 $zero-to-one-product 比隐式触发更可靠",
         "依赖缺失或存在歧义时必须停止",
@@ -173,6 +174,36 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
         )
         self.assertEqual(readable_commands, self.COMMANDS)
 
+        expected_phase_commands = {
+            "matt": ["npx skills@latest add mattpocock/skills"],
+            "superpowers": ["/plugins"],
+            "router": [
+                "codex plugin marketplace add nuts-and-bytes/zero-to-one-product",
+                "codex plugin add zero-to-one-product@zero-to-one-product",
+            ],
+            "update": [
+                "codex plugin marketplace upgrade zero-to-one-product"
+            ],
+            "use": [
+                "$zero-to-one-product <你的产品想法或当前 0→1 目标>"
+            ],
+            "troubleshoot": [],
+        }
+        for phase_name, expected_commands in expected_phase_commands.items():
+            with self.subTest(command_phase=phase_name):
+                phase = install.locator(
+                    f"[data-install-phase='{phase_name}']"
+                )
+                self.assertEqual(phase.count(), 1)
+                phase_commands = phase.locator(
+                    "code[data-command]"
+                ).evaluate_all(
+                    "elements => elements.map(element => "
+                    "element.textContent.trim().replace(/\\s+/g, ' '))"
+                )
+                self.assertEqual(phase_commands, expected_commands)
+                self.assertEqual(set(phase_commands), set(expected_commands))
+
         install_rules = {
             " ".join(text.split())
             for text in install.locator("[data-install-rule]").all_text_contents()
@@ -181,8 +212,9 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
 
         install_text = " ".join(install.inner_text().split())
         self.assertRegex(install_text, r"Matt.*Superpowers.*Zero-to-One Product")
-        self.assertRegex(install_text, r"Matt.*Superpowers.*分别.*上游.*更新")
         for rejected_meaning in (
+            "无需分别通过各自上游安装方式更新",
+            "不必分别通过各自上游安装方式更新",
             "无需新建 Codex 对话",
             "不要新建 Codex 对话",
             "不必新建 Codex 对话",
@@ -877,6 +909,142 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
             hanging_server.shutdown()
             hanging_server.server_close()
             hanging_thread.join(timeout=2)
+
+    def test_core_content_survives_intentional_image_failures(self):
+        core_selectors = {
+            ".hero-copy": "有状态路由器",
+            "#value": "控制权",
+            "#workflow": "确认产品问题",
+            "#ownership": "Matt",
+            "#dependencies": "grill-me",
+            "#install": "$zero-to-one-product",
+        }
+        baseline_page = self.open_page(
+            width=390,
+            height=844,
+            reduced_motion="reduce",
+        )
+        baseline_text = {}
+        for selector, required_text in core_selectors.items():
+            with self.subTest(baseline_selector=selector):
+                content = baseline_page.locator(selector)
+                self.assertEqual(content.count(), 1)
+                expect(content).to_be_visible(timeout=700)
+                baseline_text[selector] = content.inner_text()
+                self.assertIn(required_text, baseline_text[selector])
+        self.browser_context.close()
+        del self.browser_context
+
+        intentionally_aborted = set()
+        failed_requests = []
+        console_errors = []
+        page_errors = []
+        self.browser_context = self.browser.new_context(
+            viewport={"width": 390, "height": 844},
+            reduced_motion="reduce",
+        )
+        page = self.browser_context.new_page()
+        page.on(
+            "requestfailed",
+            lambda request: failed_requests.append((request.url, request.failure)),
+        )
+        page.on(
+            "console",
+            lambda message: console_errors.append(
+                (message.text, message.location.get("url", ""))
+            )
+            if message.type == "error"
+            else None,
+        )
+        page.on("pageerror", lambda error: page_errors.append(str(error)))
+
+        def abort_images(route, request):
+            if request.resource_type == "image":
+                intentionally_aborted.add(request.url)
+                route.abort("failed")
+            else:
+                route.continue_()
+
+        page.route("**/*", abort_images)
+        response = page.goto(
+            f"{self.base_url}/",
+            wait_until="domcontentloaded",
+            timeout=5_000,
+        )
+        self.assertIsNotNone(response)
+        self.assertEqual(response.status, 200)
+
+        images = page.locator("img")
+        self.assertGreater(images.count(), 0)
+        for image_index in range(images.count()):
+            images.nth(image_index).scroll_into_view_if_needed(timeout=700)
+        page.wait_for_timeout(250)
+
+        self.assertEqual(len(intentionally_aborted), images.count())
+        self.assertEqual(
+            {url for url, _failure in failed_requests},
+            intentionally_aborted,
+        )
+        for failed_url, failure in failed_requests:
+            self.assertIn(failed_url, intentionally_aborted)
+            self.assertRegex(failure or "", r"ERR_FAILED|aborted|failed")
+
+        for selector, required_text in core_selectors.items():
+            with self.subTest(failed_image_selector=selector):
+                content = page.locator(selector)
+                self.assertEqual(content.count(), 1)
+                expect(content).to_be_visible(timeout=700)
+                failed_text = content.inner_text()
+                self.assertIn(required_text, failed_text)
+                self.assertIn(selector, baseline_text)
+                self.assertEqual(failed_text, baseline_text[selector])
+
+        narrow_content = page.locator(
+            "#dependencies [data-skill], #install code[data-command]"
+        )
+        self.assertEqual(narrow_content.count(), 23)
+        narrow_contracts = narrow_content.evaluate_all(
+            """
+            elements => elements.map(element => {
+              const rect = element.getBoundingClientRect();
+              return {
+                text: element.textContent.trim(),
+                visible: element.checkVisibility({
+                  checkOpacity: true,
+                  checkVisibilityCSS: true,
+                }),
+                left: rect.left,
+                right: rect.right,
+                clientWidth: element.clientWidth,
+                scrollWidth: element.scrollWidth,
+                documentWidth: document.documentElement.clientWidth,
+              };
+            })
+            """
+        )
+        for item in narrow_contracts:
+            self.assertTrue(item["text"])
+            self.assertTrue(item["visible"])
+            self.assertGreaterEqual(item["left"], 0)
+            self.assertLessEqual(item["right"], item["documentWidth"] + 0.5)
+            self.assertLessEqual(item["scrollWidth"], item["clientWidth"] + 1)
+
+        scroll_width, client_width = page.evaluate(
+            "[document.documentElement.scrollWidth, "
+            "document.documentElement.clientWidth]"
+        )
+        self.assertEqual(scroll_width, client_width)
+        unexpected_console_errors = [
+            (message, url)
+            for message, url in console_errors
+            if not (
+                url in intentionally_aborted
+                and "Failed to load resource" in message
+                and "ERR_FAILED" in message
+            )
+        ]
+        self.assertEqual(unexpected_console_errors, [])
+        self.assertEqual(page_errors, [])
 
 
 if __name__ == "__main__":
