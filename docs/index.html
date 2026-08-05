@@ -35,6 +35,9 @@
       <nav id="primary-navigation" class="primary-navigation" aria-label="主要导航">
         <a href="#value">价值</a>
         <a href="#classifier">分类入口</a>
+        <a href="#workflow">完整路线</a>
+        <a href="#ownership">职责地图</a>
+        <a href="#guardrails">安全边界</a>
         <a href="#scope-transfer">范围移交</a>
         <a class="nav-source" href="https://github.com/nuts-and-bytes/zero-to-one-product">GitHub</a>
       </nav>
@@ -128,6 +131,233 @@
             <code>wayfinder</code>
           </li>
         </ol>
+      </section>
+
+      <section class="workflow section page-shell" id="workflow" aria-labelledby="workflow-title">
+        <div class="workflow-intro" data-reveal>
+          <div class="section-heading">
+            <p class="eyebrow"><span aria-hidden="true"></span> 固定阶段路线</p>
+            <h2 id="workflow-title">从产品问题到分支收尾，<br>每一步都有唯一接棒者。</h2>
+          </div>
+          <p class="workflow-resume">
+            Router 会根据已有证据恢复到最靠后的未完成阶段，而不是每次重新 brainstorming。已有规格、Tickets、测试与审查结果都会成为下一次接续的坐标。
+          </p>
+        </div>
+
+        <figure class="editorial-plate" data-reveal>
+          <div class="editorial-plate-shell">
+            <img
+              src="assets/fixed-route.webp"
+              width="1440"
+              height="811"
+              loading="lazy"
+              data-visual="fixed-route"
+              alt="固定的十三阶段产品路线，从问题确认依次进入实现、整票审查与分支收尾"
+            >
+          </div>
+          <figcaption>一条固定路线，三个角色按阶段交接控制权。</figcaption>
+        </figure>
+
+        <ol class="stage-route" aria-label="十三阶段固定路线" data-reveal>
+          <li data-stage="01" data-stage-owner="matt">
+            <span class="stage-number">01</span>
+            <div class="stage-copy"><h3 class="stage-title">确认产品问题</h3><p class="stage-goal">把模糊想法压缩成可回答的用户、目标与边界问题。</p></div>
+            <code class="stage-mechanism">grill-me / grill-with-docs</code>
+            <span class="stage-owner">Matt</span>
+          </li>
+          <li data-stage="02" data-stage-owner="matt">
+            <span class="stage-number">02</span>
+            <div class="stage-copy"><h3 class="stage-title">拆解大型未知</h3><p class="stage-goal">先建立项目地图，再决定哪些区域值得深入。</p></div>
+            <code class="stage-mechanism">wayfinder</code>
+            <span class="stage-owner">Matt</span>
+          </li>
+          <li data-stage="03" data-stage-owner="matt">
+            <span class="stage-number">03</span>
+            <div class="stage-copy"><h3 class="stage-title">补齐事实</h3><p class="stage-goal">用可信来源消除会改变产品方向的事实缺口。</p></div>
+            <code class="stage-mechanism">research</code>
+            <span class="stage-owner">Matt</span>
+          </li>
+          <li data-stage="04" data-stage-owner="matt">
+            <span class="stage-number">04</span>
+            <div class="stage-copy"><h3 class="stage-title">验证关键不确定性</h3><p class="stage-goal">用最小原型回答最昂贵、最关键的设计问题。</p></div>
+            <code class="stage-mechanism">prototype</code>
+            <span class="stage-owner">Matt</span>
+          </li>
+          <li data-stage="05" data-stage-owner="matt">
+            <span class="stage-number">05</span>
+            <div class="stage-copy"><h3 class="stage-title">形成规格</h3><p class="stage-goal">把已验证的产品判断写成可验收的整体规格。</p></div>
+            <code class="stage-mechanism">to-spec</code>
+            <span class="stage-owner">Matt</span>
+          </li>
+          <li data-stage="06" data-stage-owner="matt">
+            <span class="stage-number">06</span>
+            <div class="stage-copy"><h3 class="stage-title">切成 Tickets</h3><p class="stage-goal">沿用户价值纵向切片，让每票都能独立验收。</p></div>
+            <code class="stage-mechanism">to-tickets</code>
+            <span class="stage-owner">Matt</span>
+          </li>
+          <li data-stage="07" data-stage-owner="router">
+            <span class="stage-number">07</span>
+            <div class="stage-copy"><h3 class="stage-title">确认仓库状态</h3><p class="stage-goal">核对 Git、状态文件与权限门，再准许工程接管。</p></div>
+            <code class="stage-mechanism">zero-to-one-product</code>
+            <span class="stage-owner">Router</span>
+          </li>
+          <li data-stage="08" data-stage-owner="superpowers">
+            <span class="stage-number">08</span>
+            <div class="stage-copy"><h3 class="stage-title">隔离工作区</h3><p class="stage-goal">在独立 worktree 中保护主分支与现有工作。</p></div>
+            <code class="stage-mechanism">using-git-worktrees</code>
+            <span class="stage-owner">Superpowers</span>
+          </li>
+          <li data-stage="09" data-stage-owner="superpowers">
+            <span class="stage-number">09</span>
+            <div class="stage-copy"><h3 class="stage-title">规划单个 Ticket</h3><p class="stage-goal">只把当前一票拆成可验证的技术任务与文件改动。</p></div>
+            <code class="stage-mechanism">writing-plans</code>
+            <span class="stage-owner">Superpowers</span>
+          </li>
+          <li data-stage="10" data-stage-owner="router">
+            <span class="stage-number">10</span>
+            <div class="stage-copy"><h3 class="stage-title">有界执行</h3><p class="stage-goal">让每个任务依次通过实现、规格与质量审查。</p></div>
+            <code class="stage-mechanism">zero-to-one-product</code>
+            <span class="stage-owner">Router</span>
+          </li>
+          <li data-stage="11" data-stage-owner="matt">
+            <span class="stage-number">11</span>
+            <div class="stage-copy"><h3 class="stage-title">整体代码审查</h3><p class="stage-goal">在任务链结束后，按整票目标审视完整差异。</p></div>
+            <code class="stage-mechanism">code-review</code>
+            <span class="stage-owner">Matt</span>
+          </li>
+          <li data-stage="12" data-stage-owner="superpowers">
+            <span class="stage-number">12</span>
+            <div class="stage-copy"><h3 class="stage-title">完成证据</h3><p class="stage-goal">用新鲜测试、构建与检查结果证明交付成立。</p></div>
+            <code class="stage-mechanism">verification-before-completion</code>
+            <span class="stage-owner">Superpowers</span>
+          </li>
+          <li data-stage="13" data-stage-owner="superpowers">
+            <span class="stage-number">13</span>
+            <div class="stage-copy"><h3 class="stage-title">分支收尾</h3><p class="stage-goal">在明确选择后合并、提交 PR 或保留工作区。</p></div>
+            <code class="stage-mechanism">finishing-a-development-branch</code>
+            <span class="stage-owner">Superpowers</span>
+          </li>
+        </ol>
+      </section>
+
+      <section class="ownership section page-shell" id="ownership" aria-labelledby="ownership-title">
+        <div class="ownership-heading" data-reveal>
+          <div class="section-heading compact">
+            <p class="eyebrow"><span aria-hidden="true"></span> 职责地图</p>
+            <h2 id="ownership-title">不是三套并行流程，<br>而是三种不同责任。</h2>
+          </div>
+          <p>角色边界用名称、线型与位置重复编码；颜色只用来加强识别。</p>
+        </div>
+
+        <figure class="editorial-plate role-plate" data-reveal>
+          <div class="editorial-plate-shell">
+            <img
+              src="assets/role-router.webp"
+              width="1440"
+              height="811"
+              loading="lazy"
+              data-visual="role-router"
+              alt="Matt、Router 与 Superpowers 三个角色在产品路线中的职责与交接关系"
+            >
+          </div>
+          <figcaption>Matt 形成产品，Router 保存状态，Superpowers 交付工程。</figcaption>
+        </figure>
+
+        <div class="owner-map" data-reveal>
+          <article class="owner-block owner-matt" data-owner="matt">
+            <p class="owner-kicker">Product formation</p>
+            <h3>Matt</h3>
+            <p>负责产品形成：追问问题、研究事实、制作原型、形成规格与 Tickets；困难调试需要证据才接手，并在任务全部完成后进行整票审查。</p>
+          </article>
+          <article class="owner-block owner-router" data-owner="router">
+            <p class="owner-kicker">State and gates</p>
+            <h3>Router</h3>
+            <p>负责入口分类、证据恢复、Git gate 与权限边界；编排有界执行，并在每票与每阶段完成时接收阶段交还。</p>
+          </article>
+          <article class="owner-block owner-superpowers" data-owner="superpowers">
+            <p class="owner-kicker">Engineering delivery</p>
+            <h3>Superpowers</h3>
+            <p>负责工作区隔离、单票技术计划、TDD、常规调试与逐项任务审查；随后提供完成证据，并完成分支收尾。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="guardrails section page-shell" id="guardrails" aria-labelledby="guardrails-title">
+        <div class="guardrails-heading" data-reveal>
+          <div class="section-heading compact">
+            <p class="eyebrow"><span aria-hidden="true"></span> 安全边界</p>
+            <h2 id="guardrails-title">路由自动，<br>权限与质量门不自动。</h2>
+          </div>
+          <p>下面不是建议清单，而是组合工作流保持可预测、可恢复、可审计的硬边界。</p>
+        </div>
+
+        <div class="guardrail-list" data-reveal>
+          <article data-guardrail="single-owner">
+            <div class="guardrail-index">G1</div>
+            <div>
+              <h3>单一主流程</h3>
+              <p>同一阶段只有一个主流程。产品发现阶段不使用 Superpowers brainstorming；正式编码只使用 Superpowers test-driven-development。禁止调用 Matt tdd，禁止调用 Matt implement。</p>
+            </div>
+          </article>
+
+          <article data-guardrail="planning-boundary">
+            <div class="guardrail-index">G2</div>
+            <div>
+              <h3>计划边界</h3>
+              <ul class="rule-list">
+                <li data-planning-rule>规格和 Tickets 完成后，才能运行 writing-plans</li>
+                <li data-planning-rule>writing-plans 只服务一个 Ticket</li>
+                <li data-planning-rule>to-tickets 把已批准规格切成纵向 Tickets，writing-plans 只为其中单个 Ticket 生成技术计划</li>
+              </ul>
+            </div>
+          </article>
+
+          <article data-guardrail="bounded-execution">
+            <div class="guardrail-index">G3</div>
+            <div>
+              <h3>有界任务链</h3>
+              <ol class="rule-list execution-rules">
+                <li data-execution-rule>一个已选 Ticket 只有在计划批准后才能按序执行</li>
+                <li data-execution-rule>每个任务由独立的新实现者负责</li>
+                <li data-execution-rule>每个任务必须依次经过 RED、GREEN、REFACTOR、规格审查和质量审查</li>
+                <li data-execution-rule>规格审查未通过时必须修复并重复审查直至通过；之后质量审查未通过时必须修复并重复审查直至通过</li>
+                <li data-execution-rule>所有任务完成后必须交还 Router，再由 Matt 执行整票 code-review</li>
+                <li data-execution-rule>不得直接进入 verification-before-completion 或 finishing-a-development-branch</li>
+                <li data-execution-rule>禁止调用完整的 subagent-driven-development 或 executing-plans</li>
+              </ol>
+            </div>
+          </article>
+
+          <article data-guardrail="debugging">
+            <div class="guardrail-index">G4</div>
+            <div>
+              <h3>证据升级</h3>
+              <p>systematic-debugging 负责常规调试。只有在出现间歇性、性能相关、难复现或无法解决等明确升级证据时，才升级到 diagnosing-bugs；两个调试流程不得同时运行。</p>
+            </div>
+          </article>
+
+          <article data-guardrail="authorization">
+            <div class="guardrail-index">G5</div>
+            <div>
+              <h3>独立授权门</h3>
+              <p>自动路由只免除路由确认，不扩大任何权限。以下所有受控操作仍必须逐项经过独立授权门：</p>
+              <ul class="authorization-actions" aria-label="需要独立授权的操作">
+                <li data-authorization-action="workspace-directory">工作区目录创建</li>
+                <li data-authorization-action="git-init">Git 初始化</li>
+                <li data-authorization-action="external-write">外部写入</li>
+                <li data-authorization-action="issue-tracker">Issue Tracker 变更</li>
+                <li data-authorization-action="worktree">worktree 创建或移除</li>
+                <li data-authorization-action="credentials">凭证使用</li>
+                <li data-authorization-action="destructive">破坏性操作</li>
+                <li data-authorization-action="commit">commit</li>
+                <li data-authorization-action="push">push</li>
+                <li data-authorization-action="pr">PR</li>
+                <li data-authorization-action="deploy-release">deploy 与 release</li>
+                <li data-authorization-action="external-communication">外部通信</li>
+              </ul>
+            </div>
+          </article>
+        </div>
       </section>
 
       <section class="scope-transfer section page-shell" id="scope-transfer" aria-labelledby="scope-title">
