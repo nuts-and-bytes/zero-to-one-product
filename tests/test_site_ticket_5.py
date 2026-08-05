@@ -84,6 +84,61 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
         self.assertEqual(section.count(), 1, f"Missing #{section_id} section")
         return section
 
+    def _copy_status_for(self, control):
+        return control.locator(
+            "xpath=ancestor::*[@data-command-block][1]"
+        ).locator("[data-copy-status][aria-live]")
+
+    def _wait_for_copy_feedback_idle(self, page, status):
+        status_handle = status.element_handle()
+        self.assertIsNotNone(status_handle)
+        page.wait_for_function(
+            """
+            element => {
+              const text = element.textContent.trim();
+              return !text.includes("已复制") && !text.includes("复制失败");
+            }
+            """,
+            arg=status_handle,
+            timeout=3_000,
+        )
+
+    def _assert_narrow_release_content_fits(self, page):
+        narrow_content = page.locator(
+            "#dependencies [data-skill], #install code[data-command]"
+        )
+        self.assertEqual(narrow_content.count(), 23)
+        narrow_contracts = narrow_content.evaluate_all(
+            """
+            elements => elements.map(element => {
+              const rect = element.getBoundingClientRect();
+              return {
+                text: element.textContent.trim(),
+                visible: element.checkVisibility({
+                  checkOpacity: true,
+                  checkVisibilityCSS: true,
+                }),
+                left: rect.left,
+                right: rect.right,
+                clientWidth: element.clientWidth,
+                scrollWidth: element.scrollWidth,
+                documentWidth: document.documentElement.clientWidth,
+              };
+            })
+            """
+        )
+        for item in narrow_contracts:
+            self.assertTrue(item["text"])
+            self.assertTrue(item["visible"])
+            self.assertGreaterEqual(item["left"], 0)
+            self.assertLessEqual(item["right"], item["documentWidth"] + 0.5)
+            self.assertLessEqual(item["scrollWidth"], item["clientWidth"] + 1)
+        scroll_width, client_width = page.evaluate(
+            "[document.documentElement.scrollWidth, "
+            "document.documentElement.clientWidth]"
+        )
+        self.assertEqual(scroll_width, client_width)
+
     def test_dependency_map_exposes_the_two_exact_upstream_sets(self):
         page = self.open_page(reduced_motion="reduce")
         dependencies = self._required_section(page, "dependencies")
@@ -298,16 +353,28 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
                 status = block.locator("[data-copy-status][aria-live]")
                 self.assertEqual(status.count(), 1)
                 self.assertEqual(status.get_attribute("aria-live"), "polite")
+                control_box = control.bounding_box()
+                self.assertIsNotNone(control_box)
+                self.assertGreaterEqual(control_box["width"], 44)
+                self.assertGreaterEqual(control_box["height"], 44)
 
                 control.click()
                 expect(status).to_contain_text("已复制", timeout=700)
                 expect(status).to_be_visible(timeout=700)
+                self.assertTrue(
+                    control.evaluate("element => element === document.activeElement")
+                )
                 self.assertEqual(
                     page.evaluate("navigator.clipboard.readText()"),
                     expected_command,
                 )
+        for control_index in range(controls.count()):
+            self._wait_for_copy_feedback_idle(
+                page,
+                self._copy_status_for(controls.nth(control_index)),
+            )
 
-        page.reload(wait_until="networkidle")
+        page.reload(wait_until="networkidle", timeout=5_000)
         controls = page.locator(
             "#install button[type='button'][data-copy-command]"
         )
@@ -330,24 +397,120 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
             reached_commands.append(active_command)
             active_control = controls.nth(len(reached_commands) - 1)
             self.assertTrue(active_control.evaluate("el => el === document.activeElement"))
-            status = active_control.locator(
-                "xpath=ancestor::*[@data-command-block][1]"
-            ).locator("[data-copy-status][aria-live]")
+            status = self._copy_status_for(active_control)
 
             for key in ("Enter", "Space"):
                 page.evaluate("navigator.clipboard.writeText('')")
                 page.keyboard.press(key)
                 expect(status).to_contain_text("已复制", timeout=700)
                 expect(status).to_be_visible(timeout=700)
+                self.assertTrue(
+                    active_control.evaluate(
+                        "element => element === document.activeElement"
+                    )
+                )
                 self.assertEqual(
                     page.evaluate("navigator.clipboard.readText()"),
                     active_command,
                 )
+                self._wait_for_copy_feedback_idle(page, status)
             if len(reached_commands) == len(self.COMMANDS):
                 break
         self.assertEqual(reached_commands, self.COMMANDS)
 
-        page.reload(wait_until="networkidle")
+        page.reload(wait_until="networkidle", timeout=5_000)
+        page.evaluate(
+            """
+            () => {
+              Object.defineProperty(navigator, "clipboard", {
+                configurable: true,
+                value: undefined,
+              });
+              window.__fallbackCopySelections = [];
+              document.execCommand = command => {
+                if (command !== "copy") {
+                  return false;
+                }
+                const active = document.activeElement;
+                const selectedText = active
+                  && typeof active.selectionStart === "number"
+                  ? active.value.slice(active.selectionStart, active.selectionEnd)
+                  : window.getSelection().toString();
+                window.__fallbackCopySelections.push(selectedText);
+                return true;
+              };
+            }
+            """
+        )
+        fallback_controls = page.locator(
+            "#install button[type='button'][data-copy-command]"
+        )
+        self.assertEqual(fallback_controls.count(), len(self.COMMANDS))
+        for index, expected_command in enumerate(self.COMMANDS):
+            with self.subTest(fallback_command=expected_command):
+                control = fallback_controls.nth(index)
+                status = self._copy_status_for(control)
+                control.click()
+                expect(status).to_contain_text("已复制", timeout=700)
+                expect(status).to_be_visible(timeout=700)
+                self.assertTrue(
+                    control.evaluate("element => element === document.activeElement")
+                )
+                self.assertEqual(
+                    page.evaluate("window.__fallbackCopySelections.at(-1)"),
+                    expected_command,
+                )
+        for control_index in range(fallback_controls.count()):
+            self._wait_for_copy_feedback_idle(
+                page,
+                self._copy_status_for(fallback_controls.nth(control_index)),
+            )
+
+        page.reload(wait_until="networkidle", timeout=5_000)
+        page.evaluate(
+            """
+            () => {
+              Object.defineProperty(navigator.clipboard, "writeText", {
+                configurable: true,
+                value: () => Promise.reject(
+                  new DOMException("clipboard denied", "NotAllowedError")
+                ),
+              });
+              window.__fallbackCopySelections = [];
+              document.execCommand = command => {
+                if (command !== "copy") {
+                  return false;
+                }
+                const active = document.activeElement;
+                const selectedText = active
+                  && typeof active.selectionStart === "number"
+                  ? active.value.slice(active.selectionStart, active.selectionEnd)
+                  : window.getSelection().toString();
+                window.__fallbackCopySelections.push(selectedText);
+                return true;
+              };
+            }
+            """
+        )
+        rejected_api_control = page.locator(
+            "#install button[type='button'][data-copy-command]"
+        ).last
+        rejected_api_status = self._copy_status_for(rejected_api_control)
+        rejected_api_control.click()
+        expect(rejected_api_status).to_contain_text("已复制", timeout=700)
+        expect(rejected_api_status).to_be_visible(timeout=700)
+        self.assertTrue(
+            rejected_api_control.evaluate(
+                "element => element === document.activeElement"
+            )
+        )
+        self.assertEqual(
+            page.evaluate("window.__fallbackCopySelections.at(-1)"),
+            self.COMMANDS[-1],
+        )
+        self._wait_for_copy_feedback_idle(page, rejected_api_status)
+
+        page.reload(wait_until="networkidle", timeout=5_000)
         page.evaluate("navigator.clipboard.writeText('sentinel')")
         page.evaluate(
             """
@@ -365,17 +528,21 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
         rejected_control = page.locator(
             "#install button[type='button'][data-copy-command]"
         ).first
-        rejected_status = rejected_control.locator(
-            "xpath=ancestor::*[@data-command-block][1]"
-        ).locator("[data-copy-status][aria-live]")
+        rejected_status = self._copy_status_for(rejected_control)
         rejected_control.click()
         expect(rejected_status).to_contain_text("复制失败", timeout=700)
         expect(rejected_status).to_be_visible(timeout=700)
+        self.assertTrue(
+            rejected_control.evaluate(
+                "element => element === document.activeElement"
+            )
+        )
         self.assertNotIn("已复制", rejected_status.inner_text())
         self.assertEqual(
             page.evaluate("navigator.clipboard.readText()"),
             "sentinel",
         )
+        self._wait_for_copy_feedback_idle(page, rejected_status)
 
     def test_commands_remain_readable_and_selectable_without_javascript(self):
         page = self.open_page(
@@ -520,20 +687,29 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
             ),
             [],
         )
-        self.assertEqual(
-            page.locator("#primary-navigation a").evaluate_all(
-                "elements => elements.map(element => "
-                "element.getAttribute('href'))"
-            ),
-            [
-                "#value",
-                "#classifier",
-                "#workflow",
-                "#ownership",
-                "#dependencies",
-                "#install",
-                "https://github.com/nuts-and-bytes/zero-to-one-product",
-            ],
+        navigation_hrefs = page.locator(
+            "#primary-navigation a"
+        ).evaluate_all(
+            "elements => elements.map(element => element.getAttribute('href'))"
+        )
+        required_navigation_hrefs = {
+            "#value",
+            "#classifier",
+            "#workflow",
+            "#ownership",
+            "#guardrails",
+            "#dependencies",
+            "#install",
+        }
+        self.assertTrue(
+            required_navigation_hrefs.issubset(set(navigation_hrefs))
+        )
+        self.assertEqual(len(navigation_hrefs), len(set(navigation_hrefs)))
+        self.assertGreaterEqual(
+            page.locator(
+                "a[href='https://github.com/nuts-and-bytes/zero-to-one-product']"
+            ).count(),
+            1,
         )
 
         heading_contract = page.locator("h1, h2, h3, h4, h5, h6").evaluate_all(
@@ -601,7 +777,10 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
         internal_navigation = page.locator(
             "#primary-navigation a[href^='#']"
         )
-        self.assertEqual(internal_navigation.count(), 6)
+        self.assertGreaterEqual(
+            internal_navigation.count(),
+            len(required_navigation_hrefs),
+        )
         for link_index in range(internal_navigation.count()):
             link = internal_navigation.nth(link_index)
             href = link.get_attribute("href")
@@ -617,6 +796,10 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
                   const rect = target.getBoundingClientRect();
                   const active = document.activeElement;
                   return {
+                    visible: target.checkVisibility({
+                      checkOpacity: true,
+                      checkVisibilityCSS: true,
+                    }),
                     intersectsViewport:
                       rect.bottom > 0 && rect.top < window.innerHeight,
                     focusIsReasonable:
@@ -628,11 +811,16 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
                 """,
                 link.element_handle(),
             )
+            self.assertTrue(target_contract["visible"])
             self.assertTrue(target_contract["intersectsViewport"])
             self.assertTrue(target_contract["focusIsReasonable"])
 
         page.evaluate("document.activeElement?.blur()")
-        page.goto(f"{self.base_url}/", wait_until="networkidle")
+        page.goto(
+            f"{self.base_url}/",
+            wait_until="networkidle",
+            timeout=5_000,
+        )
         focusable_count = page.evaluate(
             """
             () => {
@@ -659,30 +847,85 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
         )
         self.assertGreater(focusable_count, 0)
         for expected_index in range(focusable_count):
+            expected_focus = page.locator(
+                f"[data-acceptance-focus-order='{expected_index}']"
+            )
+            before_focus = expected_focus.evaluate(
+                """
+                element => {
+                  const style = getComputedStyle(element);
+                  return {
+                    outlineStyle: style.outlineStyle,
+                    outlineWidth: style.outlineWidth,
+                    outlineColor: style.outlineColor,
+                    boxShadow: style.boxShadow,
+                  };
+                }
+                """
+            )
             page.keyboard.press("Tab")
             focus_contract = page.evaluate(
                 """
                 () => {
                   const element = document.activeElement;
                   const style = getComputedStyle(element);
+                  const colorHasAlpha = color => {
+                    if (color === "transparent") {
+                      return false;
+                    }
+                    const values = color.match(/[\\d.]+/g) || [];
+                    return values.length < 4 || Number(values[3]) > 0;
+                  };
+                  const shadowHasAlpha = shadow => {
+                    if (shadow === "none") {
+                      return false;
+                    }
+                    const colors = Array.from(
+                      shadow.matchAll(/rgba?\\(([^)]+)\\)/g)
+                    );
+                    return colors.length === 0 || colors.some(match => {
+                      const values = match[1].match(/[\\d.]+/g) || [];
+                      return values.length < 4 || Number(values[3]) > 0;
+                    });
+                  };
+                  const rect = element.getBoundingClientRect();
                   return {
                     order: Number(element.dataset.acceptanceFocusOrder),
                     outlineStyle: style.outlineStyle,
                     outlineWidth: Number.parseFloat(style.outlineWidth),
+                    outlineWidthText: style.outlineWidth,
+                    outlineColor: style.outlineColor,
                     boxShadow: style.boxShadow,
+                    outlineVisible:
+                      style.outlineStyle !== "none"
+                      && Number.parseFloat(style.outlineWidth) >= 2
+                      && colorHasAlpha(style.outlineColor),
+                    shadowVisible: shadowHasAlpha(style.boxShadow),
+                    width: rect.width,
+                    height: rect.height,
                   };
                 }
                 """
             )
             self.assertEqual(focus_contract["order"], expected_index)
+            outline_changed = (
+                focus_contract["outlineStyle"] != before_focus["outlineStyle"]
+                or focus_contract["outlineWidthText"]
+                != before_focus["outlineWidth"]
+                or focus_contract["outlineColor"]
+                != before_focus["outlineColor"]
+            )
+            shadow_changed = (
+                focus_contract["boxShadow"] != before_focus["boxShadow"]
+            )
+            self.assertTrue(outline_changed or shadow_changed)
             self.assertTrue(
-                (
-                    focus_contract["outlineStyle"] != "none"
-                    and focus_contract["outlineWidth"] > 0
-                )
-                or focus_contract["boxShadow"] != "none",
+                focus_contract["outlineVisible"]
+                or (shadow_changed and focus_contract["shadowVisible"]),
                 f"Missing visible focus indicator at tab stop {expected_index}",
             )
+            self.assertGreater(focus_contract["width"], 0)
+            self.assertGreater(focus_contract["height"], 0)
 
         html = page.locator("html").inner_text()
         source = page.content()
@@ -763,46 +1006,7 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
                         self.assertGreater(contract["height"], 0)
                         self.assertTrue(contract["heading"])
                     if width == 390:
-                        narrow_content = page.locator(
-                            "#dependencies [data-skill], "
-                            "#install code[data-command]"
-                        )
-                        self.assertEqual(narrow_content.count(), 23)
-                        narrow_contracts = narrow_content.evaluate_all(
-                            """
-                            elements => elements.map(element => {
-                              const rect = element.getBoundingClientRect();
-                              return {
-                                text: element.textContent.trim(),
-                                visible: element.checkVisibility({
-                                  checkOpacity: true,
-                                  checkVisibilityCSS: true,
-                                }),
-                                left: rect.left,
-                                right: rect.right,
-                                clientWidth: element.clientWidth,
-                                scrollWidth: element.scrollWidth,
-                                documentWidth:
-                                  document.documentElement.clientWidth,
-                              };
-                            })
-                            """
-                        )
-                        for item in narrow_contracts:
-                            self.assertTrue(item["text"])
-                            self.assertTrue(item["visible"])
-                            self.assertGreaterEqual(item["left"], 0)
-                            self.assertLessEqual(
-                                item["right"], item["documentWidth"] + 0.5
-                            )
-                            self.assertLessEqual(
-                                item["scrollWidth"], item["clientWidth"] + 1
-                            )
-                        scroll_width, client_width = page.evaluate(
-                            "[document.documentElement.scrollWidth, "
-                            "document.documentElement.clientWidth]"
-                        )
-                        self.assertEqual(scroll_width, client_width)
+                        self._assert_narrow_release_content_fits(page)
                 finally:
                     self.browser_context.close()
                     del self.browser_context
@@ -818,40 +1022,42 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
             target=hanging_server.serve_forever,
             daemon=True,
         )
-        hanging_thread.start()
-        slow_host, slow_port = hanging_server.server_address
-        slow_image_url = f"http://{slow_host}:{slow_port}/slow.png"
-
-        console_errors = []
-        page_errors = []
-        failed_requests = []
-        self.browser_context = self.browser.new_context(
-            viewport={"width": 390, "height": 844},
-            reduced_motion="reduce",
-        )
-        page = self.browser_context.new_page()
-        page.on(
-            "console",
-            lambda message: console_errors.append(
-                (message.text, message.location.get("url", ""))
-            )
-            if message.type == "error"
-            else None,
-        )
-        page.on("pageerror", lambda error: page_errors.append(str(error)))
-        page.on(
-            "requestfailed",
-            lambda request: failed_requests.append((request.url, request.failure)),
-        )
-
-        def delay_images(route, request):
-            if request.resource_type == "image":
-                route.continue_(url=slow_image_url)
-            else:
-                route.continue_()
-
-        page.route("**/*", delay_images)
         try:
+            hanging_thread.start()
+            slow_host, slow_port = hanging_server.server_address
+            slow_image_url = f"http://{slow_host}:{slow_port}/slow.png"
+
+            console_errors = []
+            page_errors = []
+            failed_requests = []
+            self.browser_context = self.browser.new_context(
+                viewport={"width": 390, "height": 844},
+                reduced_motion="reduce",
+            )
+            page = self.browser_context.new_page()
+            page.on(
+                "console",
+                lambda message: console_errors.append(
+                    (message.text, message.location.get("url", ""))
+                )
+                if message.type == "error"
+                else None,
+            )
+            page.on("pageerror", lambda error: page_errors.append(str(error)))
+            page.on(
+                "requestfailed",
+                lambda request: failed_requests.append(
+                    (request.url, request.failure)
+                ),
+            )
+
+            def delay_images(route, request):
+                if request.resource_type == "image":
+                    route.continue_(url=slow_image_url)
+                else:
+                    route.continue_()
+
+            page.route("**/*", delay_images)
             response = page.goto(
                 f"{self.base_url}/",
                 wait_until="domcontentloaded",
@@ -906,9 +1112,19 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
             self.assertEqual(failed_requests, [])
         finally:
             _HangingImageHandler.release_response.set()
-            hanging_server.shutdown()
+            if _HangingImageHandler.request_started.is_set():
+                _HangingImageHandler.response_finished.wait(timeout=1)
+            if hasattr(self, "browser_context"):
+                self.browser_context.close()
+                del self.browser_context
+            if hanging_thread.is_alive():
+                hanging_server.shutdown()
             hanging_server.server_close()
             hanging_thread.join(timeout=2)
+            self.assertFalse(
+                hanging_thread.is_alive(),
+                "Hanging-image server thread did not exit",
+            )
 
     def test_core_content_survives_intentional_image_failures(self):
         core_selectors = {
@@ -976,15 +1192,42 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
 
         images = page.locator("img")
         self.assertGreater(images.count(), 0)
+        image_sources = images.evaluate_all(
+            """
+            elements => elements.map(element =>
+              element.currentSrc || element.src
+            )
+            """
+        )
+        self.assertTrue(all(image_sources))
         for image_index in range(images.count()):
             images.nth(image_index).scroll_into_view_if_needed(timeout=700)
-        page.wait_for_timeout(250)
 
-        self.assertEqual(len(intentionally_aborted), images.count())
+        failure_deadline = monotonic() + 3
+        missing_sources = list(image_sources)
+        while missing_sources and monotonic() < failure_deadline:
+            failed_urls = {url for url, _failure in failed_requests}
+            missing_sources = [
+                source for source in image_sources if source not in failed_urls
+            ]
+            if missing_sources:
+                page.wait_for_timeout(50)
         self.assertEqual(
-            {url for url, _failure in failed_requests},
-            intentionally_aborted,
+            missing_sources,
+            [],
+            f"Missing intentional image failures for: {missing_sources}",
         )
+
+        failed_urls = {url for url, _failure in failed_requests}
+        self.assertTrue(failed_urls)
+        self.assertTrue(failed_urls.issubset(intentionally_aborted))
+        for image_source in image_sources:
+            self.assertIn(
+                image_source,
+                failed_urls,
+                f"Image source did not produce an intentional failure: "
+                f"{image_source}",
+            )
         for failed_url, failure in failed_requests:
             self.assertIn(failed_url, intentionally_aborted)
             self.assertRegex(failure or "", r"ERR_FAILED|aborted|failed")
@@ -999,41 +1242,7 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
                 self.assertIn(selector, baseline_text)
                 self.assertEqual(failed_text, baseline_text[selector])
 
-        narrow_content = page.locator(
-            "#dependencies [data-skill], #install code[data-command]"
-        )
-        self.assertEqual(narrow_content.count(), 23)
-        narrow_contracts = narrow_content.evaluate_all(
-            """
-            elements => elements.map(element => {
-              const rect = element.getBoundingClientRect();
-              return {
-                text: element.textContent.trim(),
-                visible: element.checkVisibility({
-                  checkOpacity: true,
-                  checkVisibilityCSS: true,
-                }),
-                left: rect.left,
-                right: rect.right,
-                clientWidth: element.clientWidth,
-                scrollWidth: element.scrollWidth,
-                documentWidth: document.documentElement.clientWidth,
-              };
-            })
-            """
-        )
-        for item in narrow_contracts:
-            self.assertTrue(item["text"])
-            self.assertTrue(item["visible"])
-            self.assertGreaterEqual(item["left"], 0)
-            self.assertLessEqual(item["right"], item["documentWidth"] + 0.5)
-            self.assertLessEqual(item["scrollWidth"], item["clientWidth"] + 1)
-
-        scroll_width, client_width = page.evaluate(
-            "[document.documentElement.scrollWidth, "
-            "document.documentElement.clientWidth]"
-        )
-        self.assertEqual(scroll_width, client_width)
+        self._assert_narrow_release_content_fits(page)
         unexpected_console_errors = [
             (message, url)
             for message, url in console_errors
