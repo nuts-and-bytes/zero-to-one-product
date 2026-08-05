@@ -443,6 +443,8 @@
             <div class="install-content">
               <h3>安装 Matt Pocock Skills</h3>
               <p>从原作者仓库安装产品发现能力。来源：<a href="https://github.com/mattpocock/skills">mattpocock/skills</a>。</p>
+              <p data-install-rule>安装 Matt Pocock Skills 时必须选择<a href="#dependencies">依赖清单</a>中的 10 个必需 Skills</p>
+              <p data-install-rule>必须额外安装 <code>setup-matt-pocock-skills</code>，并在目标项目中运行 <code>setup-matt-pocock-skills</code></p>
               <div class="command-block" data-command-block>
                 <code data-command>npx skills@latest add mattpocock/skills</code>
                 <button type="button" data-copy-command="npx skills@latest add mattpocock/skills" aria-label="复制 Matt Pocock Skills 安装命令"><span data-copy-label>复制</span></button>
@@ -492,6 +494,7 @@
                 <button type="button" data-copy-command="codex plugin marketplace upgrade zero-to-one-product" aria-label="复制路由器更新命令"><span data-copy-label>复制</span></button>
                 <span class="copy-status" data-copy-status aria-live="polite"></span>
               </div>
+              <p data-install-rule>marketplace upgrade 后必须通过 Codex Plugins 界面更新或重新安装 Zero-to-One Product</p>
             </div>
           </li>
 
@@ -514,7 +517,8 @@
             <div class="install-content">
               <h3>停止、报告，不猜路径</h3>
               <div class="troubleshooting-rules">
-                <p data-install-rule>依赖缺失或存在歧义时必须停止</p>
+                <p data-install-rule>依赖缺失时必须停止</p>
+                <p data-install-rule>只有同时发现多个可信副本时才属于依赖歧义并必须停止</p>
                 <p data-install-rule>必须报告精确的 Skill 名称</p>
                 <p data-install-rule>禁止猜测机器相关路径</p>
               </div>

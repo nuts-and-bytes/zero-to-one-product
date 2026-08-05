@@ -65,6 +65,65 @@ run_worktree_self_test_git() {
     git "$@"
 }
 
+rewrite_png_fixture_manifest() {
+  local fixture_distribution_root="$1"
+  local fixture_parent="${WORKTREE_SELF_TEST_FIXTURE_ROOT:-}"
+
+  if [[
+    -z "${fixture_parent}"
+    || -z "${fixture_distribution_root}"
+    || "${fixture_distribution_root}" == "${fixture_parent}"
+    || "${fixture_distribution_root%/*}" != "${fixture_parent}"
+    || ! -d "${fixture_distribution_root}"
+    || -L "${fixture_distribution_root}"
+  ]]; then
+    return 1
+  fi
+
+  python3 - "${fixture_distribution_root}" <<'PY'
+import hashlib
+import pathlib
+import stat
+import sys
+
+root = pathlib.Path(sys.argv[1])
+manifest = root / "checksums.sha256"
+png = root / "docs/assets/share-card.png"
+
+root_mode = root.lstat().st_mode
+if not stat.S_ISDIR(root_mode) or stat.S_ISLNK(root_mode):
+    raise RuntimeError("fixture root must be a real directory")
+for required_file in (manifest, png):
+    required_mode = required_file.lstat().st_mode
+    if not stat.S_ISREG(required_mode) or stat.S_ISLNK(required_mode):
+        raise RuntimeError(f"fixture file must be regular: {required_file}")
+
+entries = []
+for entry in root.rglob("*"):
+    entry_mode = entry.lstat().st_mode
+    if stat.S_ISLNK(entry_mode):
+        raise RuntimeError(f"fixture contains a symlink: {entry}")
+    if stat.S_ISDIR(entry_mode):
+        continue
+    if not stat.S_ISREG(entry_mode):
+        raise RuntimeError(f"fixture contains a non-regular file: {entry}")
+    if entry == manifest:
+        continue
+    relative = entry.relative_to(root).as_posix()
+    digest = hashlib.sha256()
+    with entry.open("rb") as handle:
+        while block := handle.read(65536):
+            digest.update(block)
+    entries.append((relative, digest.hexdigest()))
+
+entries.sort()
+manifest.write_text(
+    "".join(f"{digest}  {relative}\n" for relative, digest in entries),
+    encoding="utf-8",
+)
+PY
+}
+
 run_worktree_self_test() {
   local temp_root
   if ! temp_root="$(python3 - <<'PY'
@@ -420,7 +479,6 @@ PY
   fi
 
   if ! python3 - "${invalid_png_root}" <<'PY'
-import hashlib
 import pathlib
 import sys
 
@@ -435,25 +493,13 @@ if len(data) != png_stat.st_size:
     raise RuntimeError("source PNG changed during fixture read")
 data[:8] = b"NOTAPNG!"
 png.write_bytes(data)
-
-entries = []
-for entry in root.rglob("*"):
-    if not entry.is_file() or entry == root / "checksums.sha256":
-        continue
-    relative = entry.relative_to(root).as_posix()
-    digest = hashlib.sha256()
-    with entry.open("rb") as handle:
-        while block := handle.read(65536):
-            digest.update(block)
-    entries.append((relative, digest.hexdigest()))
-entries.sort()
-(root / "checksums.sha256").write_text(
-    "".join(f"{digest}  {relative}\n" for relative, digest in entries),
-    encoding="utf-8",
-)
 PY
   then
     abort_worktree_self_test_setup "unable to create invalid PNG fixture"
+    return 1
+  fi
+  if ! rewrite_png_fixture_manifest "${invalid_png_root}"; then
+    abort_worktree_self_test_setup "unable to update invalid PNG fixture manifest"
     return 1
   fi
   local invalid_png_output
@@ -468,7 +514,6 @@ PY
   fi
 
   if ! python3 - "${trailing_png_root}" <<'PY'
-import hashlib
 import pathlib
 import sys
 
@@ -482,25 +527,13 @@ with png.open("rb") as handle:
 if len(data) != png_stat.st_size:
     raise RuntimeError("source PNG changed during fixture read")
 png.write_bytes(data + b"TRAILING")
-
-entries = []
-for entry in root.rglob("*"):
-    if not entry.is_file() or entry == root / "checksums.sha256":
-        continue
-    relative = entry.relative_to(root).as_posix()
-    digest = hashlib.sha256()
-    with entry.open("rb") as handle:
-        while block := handle.read(65536):
-            digest.update(block)
-    entries.append((relative, digest.hexdigest()))
-entries.sort()
-(root / "checksums.sha256").write_text(
-    "".join(f"{digest}  {relative}\n" for relative, digest in entries),
-    encoding="utf-8",
-)
 PY
   then
     abort_worktree_self_test_setup "unable to create trailing PNG fixture"
+    return 1
+  fi
+  if ! rewrite_png_fixture_manifest "${trailing_png_root}"; then
+    abort_worktree_self_test_setup "unable to update trailing PNG fixture manifest"
     return 1
   fi
   local trailing_png_output
@@ -516,7 +549,6 @@ PY
   fi
 
   if ! python3 - "${metadata_png_root}" <<'PY'
-import hashlib
 import pathlib
 import struct
 import sys
@@ -540,25 +572,13 @@ chunk = (
     + struct.pack(">I", zlib.crc32(chunk_type + payload) & 0xFFFFFFFF)
 )
 png.write_bytes(data[:33] + chunk + data[33:])
-
-entries = []
-for entry in root.rglob("*"):
-    if not entry.is_file() or entry == root / "checksums.sha256":
-        continue
-    relative = entry.relative_to(root).as_posix()
-    digest = hashlib.sha256()
-    with entry.open("rb") as handle:
-        while block := handle.read(65536):
-            digest.update(block)
-    entries.append((relative, digest.hexdigest()))
-entries.sort()
-(root / "checksums.sha256").write_text(
-    "".join(f"{digest}  {relative}\n" for relative, digest in entries),
-    encoding="utf-8",
-)
 PY
   then
     abort_worktree_self_test_setup "unable to create forbidden PNG metadata fixture"
+    return 1
+  fi
+  if ! rewrite_png_fixture_manifest "${metadata_png_root}"; then
+    abort_worktree_self_test_setup "unable to update forbidden PNG metadata fixture manifest"
     return 1
   fi
   local metadata_png_output
@@ -574,7 +594,6 @@ PY
   fi
 
   if ! python3 - "${oversized_png_root}" <<'PY'
-import hashlib
 import pathlib
 import sys
 
@@ -582,24 +601,13 @@ root = pathlib.Path(sys.argv[1])
 png = root / "docs/assets/share-card.png"
 with png.open("r+b") as handle:
     handle.truncate(600001)
-
-entries = []
-for entry in root.rglob("*"):
-    if not entry.is_file() or entry == root / "checksums.sha256":
-        continue
-    digest = hashlib.sha256()
-    with entry.open("rb") as handle:
-        while block := handle.read(65536):
-            digest.update(block)
-    entries.append((entry.relative_to(root).as_posix(), digest.hexdigest()))
-entries.sort()
-(root / "checksums.sha256").write_text(
-    "".join(f"{digest}  {relative}\n" for relative, digest in entries),
-    encoding="utf-8",
-)
 PY
   then
     abort_worktree_self_test_setup "unable to create oversized PNG fixture"
+    return 1
+  fi
+  if ! rewrite_png_fixture_manifest "${oversized_png_root}"; then
+    abort_worktree_self_test_setup "unable to update oversized PNG fixture manifest"
     return 1
   fi
   local oversized_png_output
@@ -615,7 +623,6 @@ PY
   fi
 
   if ! python3 - "${invalid_zlib_png_root}" <<'PY'
-import hashlib
 import pathlib
 import struct
 import sys
@@ -640,24 +647,13 @@ png.write_bytes(
     + chunk(b"IEND", b"")
 )
 assert png.stat().st_size == 65
-
-entries = []
-for entry in root.rglob("*"):
-    if not entry.is_file() or entry == root / "checksums.sha256":
-        continue
-    digest = hashlib.sha256()
-    with entry.open("rb") as handle:
-        while block := handle.read(65536):
-            digest.update(block)
-    entries.append((entry.relative_to(root).as_posix(), digest.hexdigest()))
-entries.sort()
-(root / "checksums.sha256").write_text(
-    "".join(f"{digest}  {relative}\n" for relative, digest in entries),
-    encoding="utf-8",
-)
 PY
   then
     abort_worktree_self_test_setup "unable to create invalid zlib PNG fixture"
+    return 1
+  fi
+  if ! rewrite_png_fixture_manifest "${invalid_zlib_png_root}"; then
+    abort_worktree_self_test_setup "unable to update invalid zlib PNG fixture manifest"
     return 1
   fi
   local invalid_zlib_png_output
@@ -673,7 +669,6 @@ PY
   fi
 
   if ! python3 - "${invalid_crc_png_root}" <<'PY'
-import hashlib
 import pathlib
 import struct
 import sys
@@ -695,24 +690,13 @@ png.write_bytes(
     + chunk(b"IDAT", b"not-zlib", corrupt_crc=True)
     + chunk(b"IEND", b"")
 )
-
-entries = []
-for entry in root.rglob("*"):
-    if not entry.is_file() or entry == root / "checksums.sha256":
-        continue
-    digest = hashlib.sha256()
-    with entry.open("rb") as handle:
-        while block := handle.read(65536):
-            digest.update(block)
-    entries.append((entry.relative_to(root).as_posix(), digest.hexdigest()))
-entries.sort()
-(root / "checksums.sha256").write_text(
-    "".join(f"{digest}  {relative}\n" for relative, digest in entries),
-    encoding="utf-8",
-)
 PY
   then
     abort_worktree_self_test_setup "unable to create invalid CRC PNG fixture"
+    return 1
+  fi
+  if ! rewrite_png_fixture_manifest "${invalid_crc_png_root}"; then
+    abort_worktree_self_test_setup "unable to update invalid CRC PNG fixture manifest"
     return 1
   fi
   local invalid_crc_png_output

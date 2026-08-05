@@ -71,10 +71,20 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
         "$zero-to-one-product <你的产品想法或当前 0→1 目标>",
     ]
     INSTALL_RULES = {
+        "安装 Matt Pocock Skills 时必须选择依赖清单中的 10 个必需 Skills",
+        (
+            "必须额外安装 setup-matt-pocock-skills，并在目标项目中运行 "
+            "setup-matt-pocock-skills"
+        ),
         "Matt Pocock Skills 与 Superpowers 必须分别通过各自上游安装方式更新",
+        (
+            "marketplace upgrade 后必须通过 Codex Plugins 界面更新或重新安装 "
+            "Zero-to-One Product"
+        ),
         "安装或更新后必须新建一个 Codex 对话",
         "显式调用 $zero-to-one-product 比隐式触发更可靠",
-        "依赖缺失或存在歧义时必须停止",
+        "依赖缺失时必须停止",
+        "只有同时发现多个可信副本时才属于依赖歧义并必须停止",
         "必须报告精确的 Skill 名称",
         "禁止猜测机器相关路径",
     }
@@ -274,6 +284,36 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
         ):
             self.assertIn(label, phase_text[owner])
 
+        self.assertIn(
+            "安装 Matt Pocock Skills 时必须选择依赖清单中的 10 个必需 Skills",
+            phase_text["matt"],
+        )
+        self.assertIn(
+            "必须额外安装 setup-matt-pocock-skills，并在目标项目中运行 "
+            "setup-matt-pocock-skills",
+            phase_text["matt"],
+        )
+        self.assertEqual(
+            install.locator(
+                "[data-install-phase='matt'] a[href='#dependencies']"
+            ).count(),
+            1,
+        )
+        self.assertIn(
+            "marketplace upgrade 后必须通过 Codex Plugins 界面更新或重新安装 "
+            "Zero-to-One Product",
+            phase_text["update"],
+        )
+        self.assertIn("依赖缺失时必须停止", phase_text["troubleshoot"])
+        self.assertIn(
+            "只有同时发现多个可信副本时才属于依赖歧义并必须停止",
+            phase_text["troubleshoot"],
+        )
+        self.assertIn(
+            "必须报告精确的 Skill 名称",
+            phase_text["troubleshoot"],
+        )
+
         readable_commands = install.locator("code[data-command]").evaluate_all(
             "elements => elements.map(element => "
             "element.textContent.trim().replace(/\\s+/g, ' '))"
@@ -324,7 +364,8 @@ class Ticket5AcceptanceTests(SiteBrowserTestCase):
             "无需新建 Codex 对话",
             "不要新建 Codex 对话",
             "不必新建 Codex 对话",
-            "依赖缺失或存在歧义时不停止",
+            "依赖缺失时不停止",
+            "发现多个可信副本时不停止",
             "无需停止",
             "报告不精确的 Skill 名称",
             "可以猜测机器路径",
