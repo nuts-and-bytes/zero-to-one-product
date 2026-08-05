@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://nuts-and-bytes.github.io/zero-to-one-product/sitemap.xml
