@@ -35,12 +35,18 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
 
         stages = page.locator("#workflow [data-stage]").evaluate_all(
             """
-            elements => elements.map(stage => [
-              stage.querySelector(".stage-number")?.textContent.trim() ?? "",
-              stage.querySelector(".stage-title")?.textContent.trim() ?? "",
-              stage.querySelector(".stage-mechanism")?.textContent.trim() ?? "",
-              stage.querySelector(".stage-owner")?.textContent.trim() ?? "",
-            ])
+            elements => {
+              const text = (stage, selector) =>
+                (stage.querySelector(selector)?.textContent ?? "")
+                  .trim()
+                  .replace(/\\s+/g, " ");
+              return elements.map(stage => [
+                text(stage, ".stage-number"),
+                text(stage, ".stage-title"),
+                text(stage, ".stage-mechanism"),
+                text(stage, ".stage-owner"),
+              ]);
+            }
             """
         )
 
@@ -92,20 +98,38 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
         def normalized(text):
             return " ".join(text.split())
 
+        def contract_text(text):
+            return "".join(
+                character
+                for character in normalized(text)
+                if character.isalnum() or character == "-"
+            )
+
         def item_text(name):
             item = page.locator(f"#guardrails [data-guardrail='{name}']")
             self.assertEqual(item.count(), 1, f"Missing {name} guardrail")
             return normalized(item.inner_text())
 
         single_owner = item_text("single-owner")
-        for pattern in (
-            r"同一阶段.*只有.*一个.*主流程",
-            r"产品发现.*不.*brainstorming",
-            r"正式编码.*只.*Superpowers.*test-driven-development",
-            r"禁止.*Matt.*tdd",
-            r"禁止.*Matt.*implement",
+        normalized_single_owner = contract_text(single_owner)
+        for positive_rule in (
+            "同一阶段只有一个主流程",
+            "产品发现阶段不使用 Superpowers brainstorming",
+            "正式编码只使用 Superpowers test-driven-development",
+            "禁止调用 Matt tdd",
+            "禁止调用 Matt implement",
         ):
-            self.assertRegex(single_owner, pattern)
+            self.assertIn(contract_text(positive_rule), normalized_single_owner)
+        for rejected_rule in (
+            "不禁止调用 Matt tdd",
+            "不禁止调用 Matt implement",
+            "正式编码不只使用 Superpowers test-driven-development",
+            "仍可使用 Matt tdd",
+            "仍可使用 Matt implement",
+            "可以使用 Matt tdd",
+            "可以使用 Matt implement",
+        ):
+            self.assertNotIn(contract_text(rejected_rule), normalized_single_owner)
 
         planning_boundary = item_text("planning-boundary")
         self.assertIn(
@@ -143,106 +167,150 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
             self.assertRegex(debugging, pattern)
 
         authorization = item_text("authorization")
+        normalized_authorization = contract_text(authorization)
         self.assertIn(
-            "以下所有受控操作仍必须逐项经过独立授权门",
-            authorization,
+            contract_text("以下所有受控操作仍必须逐项经过独立授权门"),
+            normalized_authorization,
         )
-        self.assertNotRegex(authorization, r"(?:不受|无需).*授权")
-        actions = (
-            "工作区",
-            "目录创建",
-            "Git 初始化",
-            "外部写入",
-            "Issue Tracker",
-            "worktree",
-            "凭证",
-            "破坏性操作",
-            "commit",
-            "push",
-            "PR",
-            "deploy",
-            "release",
-            "外部通信",
-            "独立授权门",
+        for rejected_rule in ("不受独立授权门", "无需独立授权"):
+            self.assertNotIn(
+                contract_text(rejected_rule),
+                normalized_authorization,
+            )
+
+        expected_actions = {
+            "workspace-directory": ("工作区", "目录创建"),
+            "git-init": ("Git", "初始化"),
+            "external-write": ("外部写入",),
+            "issue-tracker": ("Issue Tracker",),
+            "worktree": ("worktree",),
+            "credentials": ("凭证",),
+            "destructive": ("破坏性操作",),
+            "commit": ("commit",),
+            "push": ("push",),
+            "pr": ("PR",),
+            "deploy-release": ("deploy", "release"),
+            "external-communication": ("外部通信",),
+        }
+        action_items = page.locator(
+            "#guardrails [data-guardrail='authorization'] "
+            "[data-authorization-action]"
         )
-        for action in actions:
-            self.assertIn(action, authorization)
+        action_contracts = action_items.evaluate_all(
+            """
+            elements => elements.map(element => ({
+              action: element.dataset.authorizationAction,
+              text: element.textContent.trim().replace(/\\s+/g, " "),
+            }))
+            """
+        )
+        self.assertCountEqual(
+            [item["action"] for item in action_contracts],
+            expected_actions,
+        )
+        for item in action_contracts:
+            with self.subTest(action=item["action"]):
+                for keyword in expected_actions[item["action"]]:
+                    self.assertIn(keyword, item["text"])
         self.assertRegex(
             authorization,
             r"自动路由.*只.*免除.*路由确认.*不.*扩大.*权限",
         )
-        self.assertRegex(
-            authorization,
-            r"工作区.*Git 初始化.*外部写入.*Issue Tracker.*worktree.*凭证.*破坏性.*commit.*push.*PR.*deploy.*release.*外部通信.*独立授权门",
-        )
 
     def test_workflow_visuals_use_stable_intrinsic_image_contracts(self):
-        page = self.open_page()
-
         for visual in ("fixed-route", "role-router"):
             with self.subTest(visual=visual):
-                image = page.locator(f"img[data-visual='{visual}']")
-                self.assertEqual(image.count(), 1, f"Missing {visual} visual")
-                image.scroll_into_view_if_needed(timeout=1_500)
-                image_handle = image.element_handle()
-                self.assertIsNotNone(image_handle)
-                page.wait_for_function(
-                    "element => element.naturalWidth > 0",
-                    arg=image_handle,
-                    timeout=1_500,
-                )
-                expect(image).to_be_visible(timeout=1_500)
-                image_contract = image.evaluate(
-                    """
-                    element => {
-                      const style = getComputedStyle(element);
-                      const rect = element.getBoundingClientRect();
-                      const centerX = rect.left + rect.width / 2;
-                      const centerY = rect.top + rect.height / 2;
-                      const hit = document.elementFromPoint(centerX, centerY);
-                      return {
-                        width: element.naturalWidth,
-                        height: element.naturalHeight,
-                        complete: element.complete,
-                        loading: element.getAttribute("loading"),
-                        alt: element.getAttribute("alt") ?? "",
-                        opacity: Number.parseFloat(style.opacity),
-                        visibility: style.visibility,
-                        centerInViewport:
-                          centerX >= 0
-                          && centerX <= window.innerWidth
-                          && centerY >= 0
-                          && centerY <= window.innerHeight,
-                        centerHitsImage:
-                          hit === element || (hit !== null && element.contains(hit)),
-                      };
-                    }
-                    """
-                )
-                self.assertEqual(image_contract["width"], 1440)
-                self.assertEqual(image_contract["height"], 811)
-                self.assertTrue(image_contract["complete"])
-                self.assertEqual(image_contract["loading"], "lazy")
-                self.assertGreaterEqual(len(image_contract["alt"].strip()), 12)
-                self.assertGreater(image_contract["opacity"], 0.01)
-                self.assertEqual(image_contract["visibility"], "visible")
-                self.assertTrue(image_contract["centerInViewport"])
-                self.assertTrue(image_contract["centerHitsImage"])
-                box = image.bounding_box()
-                self.assertIsNotNone(box)
-                self.assertGreaterEqual(box["width"], 280)
-                self.assertGreaterEqual(box["height"], 150)
-                self.assertAlmostEqual(
-                    box["height"] / box["width"],
-                    811 / 1440,
-                    delta=0.02,
-                )
-                if visual == "fixed-route":
-                    for keyword in ("固定", "阶段", "路线"):
-                        self.assertIn(keyword, image_contract["alt"])
-                else:
-                    for role in ("Matt", "Router", "Superpowers"):
-                        self.assertIn(role, image_contract["alt"])
+                for width, height in ((1280, 720), (390, 844)):
+                    page = self.open_page(
+                        width=width,
+                        height=height,
+                        reduced_motion="reduce",
+                    )
+                    try:
+                        image = page.locator(f"img[data-visual='{visual}']")
+                        self.assertEqual(
+                            image.count(),
+                            1,
+                            f"Missing {visual} visual at {width}px",
+                        )
+                        image.scroll_into_view_if_needed(timeout=1_500)
+                        image_handle = image.element_handle()
+                        self.assertIsNotNone(image_handle)
+                        page.wait_for_function(
+                            "element => element.naturalWidth > 0",
+                            arg=image_handle,
+                            timeout=1_500,
+                        )
+                        expect(image).to_be_visible(timeout=1_500)
+                        image_contract = image.evaluate(
+                            """
+                            element => {
+                              const style = getComputedStyle(element);
+                              const rect = element.getBoundingClientRect();
+                              const centerX = rect.left + rect.width / 2;
+                              const centerY = rect.top + rect.height / 2;
+                              const hit = document.elementFromPoint(
+                                centerX,
+                                centerY
+                              );
+                              return {
+                                width: element.naturalWidth,
+                                height: element.naturalHeight,
+                                complete: element.complete,
+                                loading: element.getAttribute("loading"),
+                                alt: element.getAttribute("alt") ?? "",
+                                visible: element.checkVisibility({
+                                  checkOpacity: true,
+                                  checkVisibilityCSS: true,
+                                }),
+                                opacity: Number.parseFloat(style.opacity),
+                                visibility: style.visibility,
+                                centerInViewport:
+                                  centerX >= 0
+                                  && centerX <= window.innerWidth
+                                  && centerY >= 0
+                                  && centerY <= window.innerHeight,
+                                centerHitsImage:
+                                  hit === element
+                                  || (hit !== null && element.contains(hit)),
+                              };
+                            }
+                            """
+                        )
+                        self.assertEqual(image_contract["width"], 1440)
+                        self.assertEqual(image_contract["height"], 811)
+                        self.assertTrue(image_contract["complete"])
+                        self.assertEqual(image_contract["loading"], "lazy")
+                        self.assertGreaterEqual(
+                            len(image_contract["alt"].strip()),
+                            12,
+                        )
+                        self.assertTrue(image_contract["visible"])
+                        self.assertGreater(image_contract["opacity"], 0.01)
+                        self.assertEqual(
+                            image_contract["visibility"],
+                            "visible",
+                        )
+                        self.assertTrue(image_contract["centerInViewport"])
+                        self.assertTrue(image_contract["centerHitsImage"])
+                        box = image.bounding_box()
+                        self.assertIsNotNone(box)
+                        self.assertGreaterEqual(box["width"], 280)
+                        self.assertGreaterEqual(box["height"], 150)
+                        self.assertAlmostEqual(
+                            box["height"] / box["width"],
+                            811 / 1440,
+                            delta=0.02,
+                        )
+                        if visual == "fixed-route":
+                            for keyword in ("固定", "阶段", "路线"):
+                                self.assertIn(keyword, image_contract["alt"])
+                        else:
+                            for role in ("Matt", "Router", "Superpowers"):
+                                self.assertIn(role, image_contract["alt"])
+                    finally:
+                        self.browser_context.close()
+                        del self.browser_context
 
     def test_mobile_keeps_all_stages_and_new_sections_visible(self):
         page = self.open_page(
@@ -271,12 +339,17 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
                     opacity: 0,
                     width: 0,
                     height: 0,
+                    intersectsViewport: false,
+                    centerHitsElement: false,
                   };
                 }
                 const style = getComputedStyle(element);
                 const rect = element.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                const hit = document.elementFromPoint(centerX, centerY);
                 return {
-                  text: element.textContent.trim(),
+                  text: element.textContent.trim().replace(/\\s+/g, " "),
                   visible: element.checkVisibility({
                     checkOpacity: true,
                     checkVisibilityCSS: true,
@@ -285,10 +358,18 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
                   opacity: Number.parseFloat(style.opacity),
                   width: rect.width,
                   height: rect.height,
+                  intersectsViewport:
+                    rect.right > 0
+                    && rect.left < window.innerWidth
+                    && rect.bottom > 0
+                    && rect.top < window.innerHeight,
+                  centerHitsElement:
+                    hit === element || (hit !== null && element.contains(hit)),
                 };
               };
               const documentWidth = document.documentElement.clientWidth;
               return elements.map(row => {
+                row.scrollIntoView({block: "center", inline: "nearest"});
                 const rect = row.getBoundingClientRect();
                 return {
                   number: visibility(row.querySelector(".stage-number")),
@@ -297,6 +378,8 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
                   owner: visibility(row.querySelector(".stage-owner")),
                   rowWidth: rect.width,
                   rowHeight: rect.height,
+                  documentTop: rect.top + window.scrollY,
+                  documentBottom: rect.bottom + window.scrollY,
                   rowWithinDocument:
                     rect.left >= 0 && rect.right <= documentWidth + 0.5,
                 };
@@ -317,6 +400,18 @@ class Ticket4AcceptanceTests(SiteBrowserTestCase):
                     self.assertGreater(field_state["opacity"], 0)
                     self.assertGreater(field_state["width"], 0)
                     self.assertGreater(field_state["height"], 0)
+                    self.assertTrue(field_state["intersectsViewport"])
+                    self.assertTrue(field_state["centerHitsElement"])
+
+        for previous, current in zip(row_states, row_states[1:]):
+            self.assertGreater(
+                current["documentTop"],
+                previous["documentTop"],
+            )
+            self.assertGreaterEqual(
+                current["documentTop"],
+                previous["documentBottom"],
+            )
 
         sections = page.locator("#workflow, #ownership, #guardrails")
         self.assertEqual(sections.count(), 3)
