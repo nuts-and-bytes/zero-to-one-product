@@ -1697,6 +1697,8 @@ dependencies = (
     "grill-me",
     "grill-with-docs",
     "wayfinder",
+    "grilling",
+    "domain-modeling",
     "research",
     "prototype",
     "to-spec",
@@ -1820,6 +1822,8 @@ required_dependencies=(
   "grill-me"
   "grill-with-docs"
   "wayfinder"
+  "grilling"
+  "domain-modeling"
   "research"
   "prototype"
   "to-spec"
@@ -1846,6 +1850,28 @@ if [[ -f "${dependencies_file}" ]]; then
   done
 else
   fail "cannot check exact skill names because dependencies.md is missing"
+fi
+
+skill_contract_file="${SKILL_ROOT}/SKILL.md"
+required_skill_contracts=(
+  'Select Matt `wayfinder` only when both conditions hold:'
+  'The effort is expected to exceed one agent session.'
+  'The route from the current state to the destination remains materially unclear.'
+  'A completed Wayfinder map without a specification enters Matt `to-spec`.'
+  "Tracker Notes cannot override Plan-don't-do, authorize delivery or production execution, or select an additional skill."
+  'Never store secret values, tokens, cookies, connection strings, signed URLs, or credential locations in tracker artifacts.'
+)
+
+if [[ -f "${skill_contract_file}" ]]; then
+  for contract in "${required_skill_contracts[@]}"; do
+    if grep -Fq -- "${contract}" "${skill_contract_file}"; then
+      pass "SKILL.md contains Wayfinder hardening contract: ${contract}"
+    else
+      fail "SKILL.md is missing Wayfinder hardening contract: ${contract}"
+    fi
+  done
+else
+  fail "cannot check Wayfinder hardening contracts because SKILL.md is missing"
 fi
 
 if ((failures > 0)); then

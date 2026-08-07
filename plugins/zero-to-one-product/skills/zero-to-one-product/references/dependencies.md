@@ -13,6 +13,8 @@ Install from the upstream collection with `npx skills@latest add mattpocock/skil
 - `grill-me`
 - `grill-with-docs`
 - `wayfinder`
+- `grilling`
+- `domain-modeling`
 - `research`
 - `prototype`
 - `to-spec`
@@ -20,6 +22,8 @@ Install from the upstream collection with `npx skills@latest add mattpocock/skil
 - `diagnosing-bugs`
 - `code-review`
 - `handoff`
+
+`grilling` and `domain-modeling` are catalog-visible, catalog-only internal dependencies invoked by Wayfinder. They are not outer process owners and are not eligible for filesystem fallback.
 
 ## Superpowers skills
 

@@ -59,6 +59,8 @@ Matt Pocock skills:
 - `grill-me`
 - `grill-with-docs`
 - `wayfinder`
+- `grilling`
+- `domain-modeling`
 - `research`
 - `prototype`
 - `to-spec`
@@ -66,6 +68,8 @@ Matt Pocock skills:
 - `diagnosing-bugs`
 - `code-review`
 - `handoff`
+
+`grilling` and `domain-modeling` are catalog-only internal dependencies used by Wayfinder. They are not outer workflow owners and do not use filesystem fallback.
 
 Superpowers skills:
 

@@ -27,7 +27,7 @@
 | --- | --- | --- |
 | 中小型、没有工作区 | 单一产品表面、少量角色，主要不确定性可通过一次对话或原型解决 | `grill-me` |
 | 中小型、已有工作区 | 已有代码或文档可以参与产品判断 | `grill-with-docs` |
-| 大型或关键依赖未知 | 多个子系统、角色或架构问题互相阻塞，明显跨越多个上下文 | `wayfinder` |
+| 确实跨会话且路线仍有雾 | 预计超过一个 agent session，并且从当前状态到 destination 的路线仍然实质不清楚 | `wayfinder` |
 
 它只拥有新的独立产品、应用、服务、网站、工作流或 MVP 的 0→1 外层流程。超出范围时会立即交还所有权：
 
@@ -40,7 +40,7 @@
 路线包含 13 个可检查节点。Agent 会根据已有证据恢复到最靠后的未完成节点，而不是每次从头开始。
 
 1. **确认产品问题** — `grill-me` 或 `grill-with-docs`：明确用户、问题、结果和边界。
-2. **拆解大型未知** — `wayfinder`：为复杂项目建立可跨会话恢复的决策前沿。
+2. **拆解跨会话路线迷雾** — `wayfinder`：仅在预计跨会话且到 destination 的路线仍实质不清楚时，建立可恢复的决策前沿。
 3. **补齐事实** — `research`：只在产品决定依赖外部事实时研究。
 4. **验证关键不确定性** — `prototype`：用可丢弃原型验证视觉、交互、状态或数据模型。
 5. **形成规格** — `to-spec`：把已确认的产品决定写成可构建规格。
@@ -135,11 +135,13 @@ $zero-to-one-product 我想做一个帮助独立开发者验证 SaaS 想法的�
 
 ## 必需的外部 Skills
 
-Matt Pocock Skills（10 个）：
+Matt Pocock Skills（12 个）：
 
 - `grill-me`
 - `grill-with-docs`
 - `wayfinder`
+- `grilling`
+- `domain-modeling`
 - `research`
 - `prototype`
 - `to-spec`
@@ -147,6 +149,8 @@ Matt Pocock Skills（10 个）：
 - `diagnosing-bugs`
 - `code-review`
 - `handoff`
+
+`grilling` 和 `domain-modeling` 是 Wayfinder 内部使用、仅通过 Skill catalog 解析的依赖；它们不是外层流程 owner，也不使用文件系统 fallback。
 
 Superpowers Skills（7 个）：
 
