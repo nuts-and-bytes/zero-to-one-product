@@ -1,8 +1,43 @@
+<div align="center">
+
 # Zero-to-One Product
+
+**Move a complex 0→1 product idea along one stateful, verifiable Codex route—from raw concept to first usable version.**
+
+<p>
+  <a href="https://nuts-and-bytes.github.io/zero-to-one-product/"><strong>Interactive Guide &amp; Classifier ↗</strong></a> ·
+  <a href="#install-this-plugin">Install Plugin</a> ·
+  <a href="README.zh-CN.md">简体中文</a>
+</p>
+
+<br />
+
+<img src="docs/assets/hero-route.webp" alt="Zero-to-One Product: from fuzzy idea to first usable version" width="880" />
+
+</div>
 
 English | [简体中文](README.zh-CN.md)
 
 `zero-to-one-product` is a skills-only Codex router that combines selected workflows from [Matt Pocock's skills](https://github.com/mattpocock/skills) and [Superpowers](https://github.com/obra/superpowers) into a fixed path from product idea to first usable version.
+
+> **One outer router. One active workflow per phase. One verifiable next step.**
+
+```mermaid
+flowchart LR
+  Idea["Product Idea / 0→1 Goal"] --> Classify{"Router Classifier"}
+  Classify -->|"Small / fresh"| Grill["grill-me"]
+  Classify -->|"Small / existing repo"| GrillDocs["grill-with-docs"]
+  Classify -->|"Multi-session & foggy"| Wayfinder["wayfinder"]
+  Grill --> Spec["Matt: to-spec → to-tickets"]
+  GrillDocs --> Spec
+  Wayfinder --> Spec
+  Spec --> Exec["Superpowers: worktree → plan → TDD → verify"]
+  Exec --> Ship["First Usable Version"]
+```
+
+<p align="center">
+  <img src="docs/assets/fixed-route.webp" alt="Fixed stateful 0-to-1 route across discovery and delivery" width="820" />
+</p>
 
 The plugin does not bundle either upstream project. Install and update those dependencies separately before installing this marketplace.
 

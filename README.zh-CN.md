@@ -1,4 +1,20 @@
+<div align="center">
+
 # Zero-to-One Product
+
+**让复杂的 0→1，沿一条有状态、可恢复、有安全门的 Codex 路由器前进。**
+
+<p>
+  <a href="https://nuts-and-bytes.github.io/zero-to-one-product/"><strong>打开交互式文档与分类器 ↗</strong></a> ·
+  <a href="#安装这个插件">快速安装</a> ·
+  <a href="README.md">English</a>
+</p>
+
+<br />
+
+<img src="docs/assets/hero-route.webp" alt="Zero-to-One Product：从模糊想法到首个可用版本" width="880" />
+
+</div>
 
 [English](README.md) | 简体中文
 
@@ -7,6 +23,23 @@
 它不是另一套与两者竞争的方法论，也不会复制上游 Skills。它负责判断项目类型、识别当前阶段、选择唯一的当前流程，并在阶段完成后收回控制权重新路由。
 
 > 一个路由器。每阶段一个主流程。一个可验证的下一步。
+
+```mermaid
+flowchart LR
+  Idea["模糊想法 / 0→1 目标"] --> Classify{"路由器自动分类"}
+  Classify -->|"中小型 · 新项目"| Grill["grill-me"]
+  Classify -->|"中小型 · 已有工作区"| GrillDocs["grill-with-docs"]
+  Classify -->|"跨会话 · 路线仍有雾"| Wayfinder["wayfinder"]
+  Grill --> Spec["Matt: to-spec → to-tickets"]
+  GrillDocs --> Spec
+  Wayfinder --> Spec
+  Spec --> Exec["Superpowers: worktree → plan → TDD → verify"]
+  Exec --> Ship["首个可用版本"]
+```
+
+<p align="center">
+  <img src="docs/assets/fixed-route.webp" alt="从产品发现到工程交付的固定路线" width="820" />
+</p>
 
 ## 它解决什么问题
 
